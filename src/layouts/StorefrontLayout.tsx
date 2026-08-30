@@ -98,12 +98,15 @@ export function StorefrontLayout() {
     fetchStore();
   }, [storeSlug]);
 
+  const loadingStyle = store?.settings?.loadingStyle || 'spinner';
+
   if (loading && !store) {
     return (
       <SmartLoader 
         message="Conectando à loja..." 
         timeoutSeconds={4} 
         onRetry={fetchStore} 
+        styleType={loadingStyle}
       />
     );
   }
@@ -156,23 +159,30 @@ export function StorefrontLayout() {
   const currentThemeId = store.settings?.theme || 'default';
   const currentTheme = STORE_THEMES.find(t => t.id === currentThemeId) || STORE_THEMES[0];
   const themeColor = store.settings?.themeColor || '#4f46e5';
+  
+  const headerStyle = store.settings?.headerStyle || 'default';
+  const footerStyle = store.settings?.footerStyle || 'default';
 
   return (
     <div className={`min-h-screen flex flex-col ${currentTheme.colors.background} ${currentTheme.colors.text} ${currentTheme.fontFamily}`}>
       {/* Sticky Topbar HUD - Otimizado para Mobile e Desktop sem cortes */}
       <header className={`border-b border-slate-200/50 py-3 px-4 sm:px-6 sticky top-0 ${currentTheme.colors.surface} z-30 shadow-xs backdrop-blur-md bg-opacity-95`}>
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
+        <div className={`max-w-7xl mx-auto flex items-center gap-2 ${headerStyle === 'centered' ? 'justify-between flex-col sm:flex-row' : 'justify-between'}`}>
           {/* Logo / Store Name */}
           <Link 
             to={`/${store.slug}`} 
-            className="text-lg sm:text-2xl font-bold tracking-tight truncate hover:opacity-90 transition-opacity max-w-[200px] sm:max-w-md" 
+            className={`text-lg sm:text-2xl font-bold tracking-tight truncate hover:opacity-90 transition-opacity flex items-center gap-2 max-w-[200px] sm:max-w-md ${headerStyle === 'centered' ? 'mx-auto sm:mx-0' : ''}`}
             style={{ color: themeColor }}
           >
-            {store.name}
+            {store.settings?.logoUrl ? (
+               <img src={store.settings.logoUrl} alt={store.name} className="h-10 object-contain" onError={(e) => (e.currentTarget.style.display = 'none')} />
+            ) : (
+               store.name
+            )}
           </Link>
           
           {/* User Controls & Cart */}
-          <div className="flex items-center gap-1.5 sm:gap-4 shrink-0">
+          <div className={`flex items-center gap-1.5 sm:gap-4 shrink-0 ${headerStyle === 'centered' ? 'w-full sm:w-auto justify-center mt-2 sm:mt-0' : ''}`}>
             {customer && customer.storeId === store.id ? (
               <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/80 px-2.5 py-1.5 rounded-xl">
                 <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold" style={{ backgroundColor: themeColor }}>
@@ -238,13 +248,13 @@ export function StorefrontLayout() {
       </main>
 
       {/* Footer */}
-      <footer className={`border-t border-slate-200/50 py-6 sm:py-8 ${currentTheme.colors.surface} mt-auto`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center text-xs opacity-70 space-y-2">
+      <footer className={`border-t border-slate-200/50 py-6 sm:py-8 mt-auto ${footerStyle === 'dark' ? 'bg-slate-900 text-slate-400 border-slate-800' : currentTheme.colors.surface}`}>
+        <div className={`max-w-7xl mx-auto px-4 sm:px-6 text-xs space-y-2 ${footerStyle === 'centered' ? 'text-center' : footerStyle === 'dark' ? 'text-center text-slate-400' : 'text-center opacity-70'}`}>
           <div>
-            &copy; {new Date().getFullYear()} <strong className="opacity-100">{store.name}</strong>. Todos os direitos reservados.
+            &copy; {new Date().getFullYear()} <strong className={footerStyle === 'dark' ? 'text-white' : 'opacity-100'}>{store.name}</strong>. Todos os direitos reservados.
           </div>
           <div>
-            <Link to="/" className="text-[11px] opacity-60 hover:opacity-100 transition-opacity font-medium">
+            <Link to="/" className={`text-[11px] font-medium transition-opacity ${footerStyle === 'dark' ? 'text-slate-500 hover:text-white' : 'opacity-60 hover:opacity-100'}`}>
               Plataforma Front MK E-commerce
             </Link>
           </div>

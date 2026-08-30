@@ -63,6 +63,8 @@ export function HomeStore() {
     loadProducts();
   }, [store?.id]);
 
+  const loadingStyle = store?.settings?.loadingStyle || 'spinner';
+
   if (loading && products.length === 0) {
     return (
       <SmartLoader 
@@ -70,6 +72,7 @@ export function HomeStore() {
         timeoutSeconds={3.5} 
         onRetry={loadProducts}
         fullScreen={false}
+        styleType={loadingStyle}
       />
     );
   }

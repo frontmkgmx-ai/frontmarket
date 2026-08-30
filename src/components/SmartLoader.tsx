@@ -6,13 +6,15 @@ interface SmartLoaderProps {
   timeoutSeconds?: number;
   onRetry?: () => void;
   fullScreen?: boolean;
+  styleType?: string;
 }
 
 export function SmartLoader({
   message = 'Carregando dados...',
   timeoutSeconds = 4,
   onRetry,
-  fullScreen = true
+  fullScreen = true,
+  styleType = 'spinner'
 }: SmartLoaderProps) {
   const [elapsed, setElapsed] = useState(0);
   const [isSlow, setIsSlow] = useState(false);
@@ -46,11 +48,27 @@ export function SmartLoader({
     <div className="flex flex-col items-center justify-center text-center p-6 max-w-sm mx-auto animate-in fade-in duration-300">
       {/* Animated Spinner or Warning Icon */}
       {!isTimedOut ? (
-        <div className="relative mb-5">
-          <div className="w-12 h-12 rounded-full border-3 border-indigo-100 border-t-indigo-600 animate-spin"></div>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-ping opacity-75"></span>
-          </div>
+        <div className="relative mb-5 flex items-center justify-center">
+          {styleType === 'dots' || styleType === 'dotwave' ? (
+            <div className="flex gap-1">
+              <div className="w-3 h-3 rounded-full bg-indigo-600 animate-bounce" style={{ animationDelay: '0ms' }}></div>
+              <div className="w-3 h-3 rounded-full bg-indigo-600 animate-bounce" style={{ animationDelay: '150ms' }}></div>
+              <div className="w-3 h-3 rounded-full bg-indigo-600 animate-bounce" style={{ animationDelay: '300ms' }}></div>
+            </div>
+          ) : styleType === 'progressbar' ? (
+            <div className="w-32 h-2 bg-indigo-100 rounded-full overflow-hidden">
+              <div className="h-full bg-indigo-600 animate-pulse w-full origin-left scale-x-50"></div>
+            </div>
+          ) : styleType === 'skeleton' || styleType === 'ghost' ? (
+            <div className="w-16 h-16 rounded-xl bg-slate-200 animate-pulse"></div>
+          ) : (
+            <div className="relative">
+              <div className="w-12 h-12 rounded-full border-3 border-indigo-100 border-t-indigo-600 animate-spin"></div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-ping opacity-75"></span>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 mb-5 shadow-xs">
