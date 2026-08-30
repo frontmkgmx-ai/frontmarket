@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 // As credenciais devem vir do arquivo .env em produção.
@@ -17,5 +17,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
-export const db = getFirestore(app, import.meta.env.VITE_FIREBASE_DATABASE_ID || "ai-studio-f452ed5b-7861-4365-a109-42e00eede901");
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true
+}, import.meta.env.VITE_FIREBASE_DATABASE_ID || "ai-studio-f452ed5b-7861-4365-a109-42e00eede901");
 export const storage = getStorage(app);

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { doc, setDoc, collection, serverTimestamp, updateDoc, arrayUnion } from 'firebase/firestore';
+import { doc, setDoc, collection, serverTimestamp, updateDoc, arrayUnion, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useAuthStore } from '../../store/authStore';
 import { generateSlug } from '../../lib/utils';
@@ -11,11 +11,11 @@ export function Onboarding() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { user, profile, initialize } = useAuthStore();
+  const { user, reloadProfile } = useAuthStore();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!storeName.trim() || !user || !profile) return;
+    if (!storeName.trim() || !user) return;
     
     setError('');
     setLoading(true);
@@ -23,8 +23,15 @@ export function Onboarding() {
     try {
       const slug = generateSlug(storeName);
       
-      // In a real prod environment we'd check if slug exists via Cloud Functions 
-      // or a specific query. For now, we'll let it pass (collission is possible without transactions/rules check).
+      // Validação de exclusividade do slug da loja
+      const slugQuery = query(collection(db, 'stores'), where('slug', '==', slug));
+      const slugSnapshot = await getDocs(slugQuery);
+      
+      if (!slugSnapshot.empty) {
+        setError('Este nome de loja já está em uso. Por favor, escolha outro.');
+        setLoading(false);
+        return;
+      }
       
       const storeRef = doc(collection(db, 'stores'));
       const storeData = {
@@ -54,8 +61,8 @@ export function Onboarding() {
         joinedAt: serverTimestamp()
       });
 
-      // Re-initialize auth store to pick up the new activeStore
-      initialize();
+      // Reload profile to get the new store set as activeStore
+      await reloadProfile();
       
       navigate('/admin');
     } catch (err: any) {

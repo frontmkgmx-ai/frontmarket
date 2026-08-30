@@ -11,51 +11,61 @@ interface AuthState {
   loading: boolean;
   initialized: boolean;
   initialize: () => void;
+  reloadProfile: () => Promise<void>;
   setActiveStore: (store: Store | null) => void;
   signOut: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+let authListener: any = null;
+
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   profile: null,
   activeStore: null,
   loading: true,
   initialized: false,
+  
+  reloadProfile: async () => {
+    const { user } = get();
+    if (!user) return;
+    
+    try {
+      const profileDoc = await getDoc(doc(db, 'users', user.uid));
+      let activeStore = null;
+
+      if (profileDoc.exists()) {
+        const profile = profileDoc.data() as UserProfile;
+        
+        if (profile.stores && profile.stores.length > 0) {
+          const storeDoc = await getDoc(doc(db, 'stores', profile.stores[0]));
+          if (storeDoc.exists()) {
+            activeStore = { id: storeDoc.id, ...storeDoc.data() } as Store;
+          }
+        }
+        
+        set({ profile, activeStore });
+      }
+    } catch (error) {
+      console.error("Error fetching user data:", error);
+    }
+  },
+
   initialize: () => {
-    onAuthStateChanged(auth, async (firebaseUser) => {
+    if (authListener) return; // Prevents multiple listeners
+    
+    authListener = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         set({ user: firebaseUser, loading: true });
-        
-        try {
-          // Fetch user profile
-          const profileDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-          let activeStore = null;
-
-          if (profileDoc.exists()) {
-            const profile = profileDoc.data() as UserProfile;
-            
-            // If they have stores, fetch the first one as active (for now)
-            if (profile.stores && profile.stores.length > 0) {
-              const storeDoc = await getDoc(doc(db, 'stores', profile.stores[0]));
-              if (storeDoc.exists()) {
-                activeStore = { id: storeDoc.id, ...storeDoc.data() } as Store;
-              }
-            }
-            
-            set({ profile, activeStore, loading: false, initialized: true });
-          } else {
-            set({ profile: null, activeStore: null, loading: false, initialized: true });
-          }
-        } catch (error) {
-          console.error("Error fetching user data:", error);
-          set({ loading: false, initialized: true });
-        }
+        await get().reloadProfile();
+        set({ loading: false, initialized: true });
       } else {
         set({ user: null, profile: null, activeStore: null, loading: false, initialized: true });
       }
     });
   },
+  
   setActiveStore: (store) => set({ activeStore: store }),
+  
   signOut: async () => {
     await firebaseSignOut(auth);
     set({ user: null, profile: null, activeStore: null });

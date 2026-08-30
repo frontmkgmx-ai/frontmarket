@@ -36,6 +36,10 @@ export function Register() {
         createdAt: serverTimestamp()
       });
 
+      // Reload the profile in the store to ensure it's available for Onboarding
+      const { reloadProfile } = useAuthStore.getState();
+      await reloadProfile();
+
       // Redirect to onboarding to create store
       navigate('/onboarding');
     } catch (err: any) {
