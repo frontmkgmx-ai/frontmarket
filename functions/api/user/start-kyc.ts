@@ -12,7 +12,11 @@ export async function onRequestPost(context) {
   
   // 1. Validar variáveis de ambiente
   if (!env.DIDIT_API_KEY) {
-    return new Response(JSON.stringify({ error: 'DIDIT_API_KEY (client_secret) not configured in Cloudflare Pages Settings.' }), { 
+    const availableKeys = Object.keys(env || {}).join(', ');
+    return new Response(JSON.stringify({ 
+      error: 'DIDIT_API_KEY (client_secret) not configured in Cloudflare Pages Settings.',
+      debug_keys_found: availableKeys
+    }), { 
       status: 500,
       headers: { 'Content-Type': 'application/json' }
     });
@@ -60,7 +64,8 @@ export async function onRequestPost(context) {
       body: JSON.stringify({
         workflow_id: workflowId,
         vendor_data: uid,
-        callback: `${env.APP_URL || 'https://frontmarket.cysmk.online'}/admin/verification/result`
+        callback: `${env.APP_URL || 'https://frontmarket.cysmk.online'}/admin/verification?session_id={session_id}`,
+        callback_method: 'both'
       })
     });
     

@@ -9,11 +9,24 @@ export async function onRequestPost(context) {
       JSON.stringify({ event_type, session_id, vendor_data, status, data, received_at: timestamp })
     );
 
+    // Atualiza status atual do usuário
     if (event_type === 'status.updated' || event_type === 'user.status.updated') {
       await context.env.DIDIT_EVENTS.put(
         `user:${vendor_data}:status`,
         JSON.stringify({ status, session_id, updated_at: timestamp })
       );
+      
+      // Salva no Firebase Realtime DB (conforme sugerido)
+      try {
+        const firebaseProject = context.env.VITE_FIREBASE_PROJECT_ID || 'gen-lang-client-0736685342';
+        await fetch(`https://${firebaseProject}-default-rtdb.firebaseio.com/kyc/${vendor_data}.json`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status, session_id, updated_at: timestamp })
+        });
+      } catch (e) {
+        console.error('Erro ao salvar no Firebase:', e);
+      }
     }
 
     if (event_type === 'data.updated' || event_type === 'user.data.updated') {
