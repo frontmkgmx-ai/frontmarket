@@ -1,0 +1,8 @@
+{
+  "name": "Front MK",
+  "description": "SaaS E-commerce Platform with Multi-tenancy",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

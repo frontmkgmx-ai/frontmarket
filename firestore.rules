@@ -1,0 +1,63 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Check if user is a member of the store (simplified for prototype: checking store ownerId)
+    // In a real app we'd query the /members subcollection
+    function isStoreMember(storeId) {
+      return isAuthenticated() && get(/databases/$(database)/documents/stores/$(storeId)).data.ownerId == request.auth.uid;
+    }
+
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    match /stores/{storeId} {
+      // Anyone can read store basic info
+      allow read: if true;
+      // Only owner can write
+      allow write: if isAuthenticated() && (request.resource.data.ownerId == request.auth.uid || resource.data.ownerId == request.auth.uid);
+      
+      match /members/{memberId} {
+        allow read, write: if isStoreMember(storeId);
+      }
+
+      match /categories/{categoryId} {
+        allow read: if true;
+        allow write: if isStoreMember(storeId);
+      }
+
+      match /products/{productId} {
+        allow read: if true;
+        allow write: if isStoreMember(storeId);
+      }
+
+      match /orders/{orderId} {
+        // Anyone can create an order (checkout)
+        allow create: if true;
+        // Only store owner can read/update all orders
+        allow read, update, delete: if isStoreMember(storeId);
+      }
+      
+      match /customers/{customerId} {
+        allow read, write: if isStoreMember(storeId);
+      }
+      
+      // Default fallback for other subcollections
+      match /{document=**} {
+        allow read: if true;
+        allow write: if isStoreMember(storeId);
+      }
+    }
+  }
+}
