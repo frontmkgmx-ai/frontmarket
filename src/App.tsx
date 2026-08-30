@@ -5,6 +5,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { StoreGuard } from './components/StoreGuard';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { StorefrontLayout } from './layouts/StorefrontLayout';
+import { AuraBackground } from './components/AuraBackground';
 
 import { PlatformLanding } from './pages/PlatformLanding';
 import { Login } from './pages/auth/Login';
@@ -29,48 +30,51 @@ export default function App() {
   }, [initialize]);
 
   return (
-    <BrowserRouter>
-      <Routes>
-        {/* Public Platform Landing */}
-        <Route path="/" element={<PlatformLanding />} />
+    <div className="relative min-h-screen overflow-x-hidden font-sans text-slate-900 antialiased selection:bg-teal-500 selection:text-white">
+      <AuraBackground />
+      <BrowserRouter>
+        <Routes>
+          {/* Public Platform Landing */}
+          <Route path="/" element={<PlatformLanding />} />
 
-        {/* Platform Auth Routes (For Store Owners) */}
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        
-        {/* Protected Admin Routes */}
-        <Route element={<ProtectedRoute />}>
-          <Route path="/onboarding" element={<Onboarding />} />
+          {/* Platform Auth Routes (For Store Owners) */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
           
-          {/* Dashboard needs an active store */}
-          <Route element={<StoreGuard />}>
-            <Route path="/admin" element={<DashboardLayout />}>
-              <Route index element={<Dashboard />} />
-              <Route path="products" element={<Products />} />
-              <Route path="products/new" element={<ProductForm />} />
-              <Route path="products/:id/edit" element={<ProductForm />} />
-              <Route path="categories" element={<Categories />} />
-              <Route path="orders" element={<div>Orders</div>} />
-              <Route path="customers" element={<div>Customers</div>} />
-              <Route path="payments" element={<div>Payments</div>} />
-              <Route path="settings" element={<div>Settings</div>} />
+          {/* Protected Admin Routes */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="/onboarding" element={<Onboarding />} />
+            
+            {/* Dashboard needs an active store */}
+            <Route element={<StoreGuard />}>
+              <Route path="/admin" element={<DashboardLayout />}>
+                <Route index element={<Dashboard />} />
+                <Route path="products" element={<Products />} />
+                <Route path="products/new" element={<ProductForm />} />
+                <Route path="products/:id/edit" element={<ProductForm />} />
+                <Route path="categories" element={<Categories />} />
+                <Route path="orders" element={<div>Orders</div>} />
+                <Route path="customers" element={<div>Customers</div>} />
+                <Route path="payments" element={<div>Payments</div>} />
+                <Route path="settings" element={<div>Settings</div>} />
+              </Route>
             </Route>
           </Route>
-        </Route>
 
-        {/* Public Storefront Route */}
-        <Route path="/:storeSlug" element={<StorefrontLayout />}>
-          <Route index element={<HomeStore />} />
-          <Route path="p/:productSlug" element={<ProductDetail />} />
-          <Route path="cart" element={<Cart />} />
-          <Route path="checkout" element={<Checkout />} />
-          <Route path="login" element={<CustomerLogin />} />
-          <Route path="register" element={<CustomerRegister />} />
-        </Route>
+          {/* Public Storefront Route */}
+          <Route path="/:storeSlug" element={<StorefrontLayout />}>
+            <Route index element={<HomeStore />} />
+            <Route path="p/:productSlug" element={<ProductDetail />} />
+            <Route path="cart" element={<Cart />} />
+            <Route path="checkout" element={<Checkout />} />
+            <Route path="login" element={<CustomerLogin />} />
+            <Route path="register" element={<CustomerRegister />} />
+          </Route>
 
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
+          {/* Fallback */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </div>
   );
 }
