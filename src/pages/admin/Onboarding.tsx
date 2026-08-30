@@ -24,10 +24,9 @@ export function Onboarding() {
   // Se o usuário já possui loja ativa válida configurada, redireciona para o painel
   useEffect(() => {
     if (activeStore && activeStore.name && activeStore.slug && profile?.stores && profile.stores.length > 0) {
-      // Já possui loja configurada
-      // Podemos redirecionar ou deixar criar nova loja se solicitado
+      navigate('/admin', { replace: true });
     }
-  }, [activeStore, profile]);
+  }, [activeStore, profile, navigate]);
 
   // Atualização automática do slug quando o nome muda (se o usuário não customizou manualmente)
   const handleNameChange = (val: string) => {

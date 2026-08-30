@@ -3,9 +3,9 @@ import { useEffect, useState } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { Store } from '../types';
-import { useAuthStore } from '../store/authStore';
+import { useCustomerAuthStore } from '../store/customerAuthStore';
 import { useCartStore } from '../store/cartStore';
-import { ShoppingBag, LogOut, ArrowLeft, RefreshCw } from 'lucide-react';
+import { ShoppingBag, LogOut, ArrowLeft, RefreshCw, User } from 'lucide-react';
 import { FastCache } from '../lib/cache';
 import { withTimeout } from '../lib/asyncGuard';
 import { SmartLoader } from '../components/SmartLoader';
@@ -21,10 +21,17 @@ export function StorefrontLayout() {
   });
   const [error, setError] = useState<string | null>(null);
   
-  const { user, signOut } = useAuthStore();
+  const { customer, logoutCustomer, loadCustomerSession } = useCustomerAuthStore();
   const { items } = useCartStore();
 
   const totalCartCount = items.reduce((acc, item) => acc + item.quantity, 0);
+
+  // Carrega sessão do cliente para a loja atual
+  useEffect(() => {
+    if (store?.id) {
+      loadCustomerSession(store.id);
+    }
+  }, [store?.id]);
 
   const fetchStore = async () => {
     if (!storeSlug) return;
@@ -163,24 +170,32 @@ export function StorefrontLayout() {
           
           {/* User Controls & Cart */}
           <div className="flex items-center gap-1.5 sm:gap-4 shrink-0">
-            {user ? (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-600 hidden md:block max-w-[140px] truncate font-medium">
-                  {user.displayName || user.email}
-                </span>
+            {customer && customer.storeId === store.id ? (
+              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/80 px-2.5 py-1.5 rounded-xl">
+                <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold" style={{ backgroundColor: themeColor }}>
+                  {customer.name?.charAt(0).toUpperCase() || 'C'}
+                </div>
+                <div className="text-left hidden sm:block">
+                  <span className="text-xs text-slate-800 font-bold block max-w-[120px] truncate leading-tight">
+                    {customer.name}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono block leading-none">
+                    @{customer.username}
+                  </span>
+                </div>
                 <button 
-                  onClick={() => signOut()} 
-                  title="Sair"
-                  className="p-2 text-slate-500 hover:text-rose-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                  onClick={() => logoutCustomer(store.id)} 
+                  title="Sair da Conta"
+                  className="p-1 text-slate-400 hover:text-rose-600 rounded-md hover:bg-white transition-colors cursor-pointer ml-1"
                 >
-                  <LogOut className="w-4 h-4" />
+                  <LogOut className="w-3.5 h-3.5" />
                 </button>
               </div>
             ) : (
               <div className="flex items-center gap-1.5 sm:gap-3 text-xs font-semibold">
                 <Link 
                   to={`/${store.slug}/login`} 
-                  className="px-2 sm:px-2.5 py-1.5 text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors whitespace-nowrap"
+                  className="px-2.5 sm:px-3 py-1.5 text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors whitespace-nowrap"
                 >
                   Entrar
                 </Link>

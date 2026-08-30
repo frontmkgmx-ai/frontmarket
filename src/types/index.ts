@@ -80,7 +80,7 @@ export interface OrderItem {
 
 export type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded';
 
-export interface Address {
+export interface CustomerAddress {
   zipcode: string;
   street: string;
   number: string;
@@ -88,4 +88,23 @@ export interface Address {
   neighborhood: string;
   city: string;
   state: string;
+}
+
+export type Address = CustomerAddress;
+
+export interface Customer {
+  id: string;
+  storeId: string;
+  username: string;
+  usernameLower: string;
+  password?: string;
+  name: string;
+  email?: string;
+  cpf: string;
+  phone: string;
+  address?: CustomerAddress;
+  totalOrders?: number;
+  totalSpent?: number;
+  createdAt: string;
+  updatedAt?: string;
 }

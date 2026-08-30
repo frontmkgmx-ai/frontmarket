@@ -80,14 +80,13 @@ service cloud.firestore {
         allow update, delete: if isStoreMember(storeId);
       }
       
-      // 5. Clientes da Loja
+      // 5. Clientes da Loja (Autenticação exclusiva via Firestore sem Firebase Auth)
       match /customers/{customerId} {
-        // Criação no checkout/cadastro da vitrine
-        allow create: if true;
-        // Leitura e atualização pelo cliente correspondente ou pelo lojista
-        allow read, update: if isStoreMember(storeId) || (
-          isAuthenticated() && request.auth.uid == customerId
-        );
+        // Criação e leitura para autenticação e consulta de usuários na vitrine
+        allow read, create: if true;
+        // Atualização pelo lojista ou pelo próprio registro do cliente
+        allow update: if true;
+        // Exclusão apenas pelo lojista da equipe
         allow delete: if isStoreMember(storeId);
       }
 

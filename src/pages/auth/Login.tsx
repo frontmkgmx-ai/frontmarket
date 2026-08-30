@@ -24,7 +24,7 @@ export function Login() {
 
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      navigate('/admin');
+      // A navegação será feita automaticamente pelo useEffect/Navigate reativo quando o onAuthStateChanged atualizar o `user`
     } catch (err: any) {
       setError(err.message || 'Erro ao fazer login. Verifique suas credenciais.');
     } finally {

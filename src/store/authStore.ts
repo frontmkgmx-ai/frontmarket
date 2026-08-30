@@ -88,7 +88,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         console.warn("Aviso: Inicialização de autenticação atingiu timeout seguro.");
         set({ loading: false, initialized: true });
       }
-    }, 3500);
+    }, 8000);
 
     authListener = onAuthStateChanged(auth, (firebaseUser) => {
       // Limpa listeners e timeouts anteriores
@@ -103,7 +103,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       if (firebaseUser) {
-        set({ user: firebaseUser });
+        set({ user: firebaseUser, loading: true });
 
         // Listener de perfil em tempo real com timeout de segurança
         const userRef = doc(db, 'users', firebaseUser.uid);
@@ -111,7 +111,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         let profileTimeout = setTimeout(() => {
           // Se perfil demorar a responder, libera o loading
           set({ loading: false, initialized: true });
-        }, 2500);
+        }, 4000);
 
         profileListener = onSnapshot(userRef, async (profileSnap) => {
           clearTimeout(profileTimeout);
@@ -131,7 +131,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               
               let storeTimeout = setTimeout(() => {
                 set({ loading: false, initialized: true });
-              }, 2000);
+              }, 4000);
 
               storeListener = onSnapshot(doc(db, 'stores', storeId), (storeSnap) => {
                 clearTimeout(storeTimeout);
