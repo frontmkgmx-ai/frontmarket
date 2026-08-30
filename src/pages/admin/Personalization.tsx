@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { db } from '../../firebase/config';
-import { doc, updateDoc } from 'firebase-admin/firestore'; // wait no, client side
-import { doc as firestoreDoc, updateDoc as firestoreUpdateDoc } from 'firebase/firestore';
+import { doc, updateDoc } from 'firebase/firestore';
 import { STORE_THEMES } from '../../lib/themes';
 import { Palette, CheckCircle2 } from 'lucide-react';
 
 export function Personalization() {
-  const { activeStore, setStore } = useAuthStore();
+  const { activeStore, setActiveStore } = useAuthStore();
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -17,7 +16,7 @@ export function Personalization() {
     setMessage('');
     
     try {
-      await firestoreUpdateDoc(firestoreDoc(db, 'stores', activeStore.id), {
+      await updateDoc(doc(db, 'stores', activeStore.id), {
         'settings.theme': themeId
       });
       
@@ -29,7 +28,7 @@ export function Personalization() {
         }
       };
       
-      setStore(updatedStore);
+      setActiveStore(updatedStore);
       setMessage('Tema atualizado com sucesso!');
       
       setTimeout(() => setMessage(''), 3000);

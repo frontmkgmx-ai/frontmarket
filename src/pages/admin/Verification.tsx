@@ -8,7 +8,11 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  ArrowRight
+  ArrowRight,
+  Camera,
+  X,
+  Lock,
+  UserCheck
 } from 'lucide-react';
 import { auth, db } from '../../firebase/config';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -28,6 +32,8 @@ export function Verification() {
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showCameraModal, setShowCameraModal] = useState(false);
+  const [modalCameraError, setModalCameraError] = useState<string | null>(null);
 
   const fetchKycStatus = async () => {
     try {
@@ -64,19 +70,39 @@ export function Verification() {
     return () => clearInterval(interval);
   }, [kycStatus?.kyc_status]);
 
-  const startVerification = async () => {
+  const handleRequestKycStart = () => {
+    setError(null);
+    setModalCameraError(null);
+    setShowCameraModal(true);
+  };
+
+  const handleConfirmCameraAndStart = async () => {
     try {
       setStarting(true);
-      setError(null);
+      setModalCameraError(null);
       
-      // Pedir permissão de câmera explicitamente antes de iniciar
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        // Opcional: parar as tracks imediatamente após conseguir a permissão para não deixar a luz da câmera ligada
-        stream.getTracks().forEach(track => track.stop());
-      } catch (camErr) {
-        throw new Error('É necessário permitir o acesso à câmera para realizar a verificação facial. Verifique as permissões do seu navegador.');
+      // Solicitar permissão de câmera explicitamente
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Seu navegador não possui suporte para captura de vídeo pela câmera.');
       }
+
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        // Libera a câmera temporária após confirmação
+        stream.getTracks().forEach(track => track.stop());
+      } catch (camErr: any) {
+        if (camErr.name === 'NotAllowedError' || camErr.name === 'PermissionDeniedError') {
+          throw new Error('Permissão negada. Por favor, clique no ícone de cadeado/câmera na barra de endereço do seu navegador e autorize o uso da câmera.');
+        } else if (camErr.name === 'NotFoundError' || camErr.name === 'DevicesNotFoundError') {
+          throw new Error('Nenhuma câmera foi detectada no seu dispositivo. Conecte uma câmera para continuar.');
+        } else {
+          throw new Error('Não foi possível acessar a câmera: ' + (camErr.message || 'Erro desconhecido'));
+        }
+      }
+
+      // Usuário concedeu acesso à câmera; fecha modal e gera sessão segura
+      setShowCameraModal(false);
 
       const user = auth.currentUser;
       if (!user) return;
@@ -105,10 +131,11 @@ export function Verification() {
       }
       
       if (data.verification_url) {
-        // Redirecionar para URL única e criptografada do Didit (expira em 5 mins ou conforme configurado)
+        // Redirecionar para URL única e criptografada do Didit
         window.location.href = data.verification_url;
       }
     } catch (err: any) {
+      setModalCameraError(err.message || 'Ocorreu um erro ao autorizar a câmera.');
       setError(err.message || 'Ocorreu um erro ao conectar ao sistema de verificação.');
       setStarting(false);
     }
@@ -251,7 +278,7 @@ export function Verification() {
 
               <div className="pt-4">
                 <button
-                  onClick={startVerification}
+                  onClick={handleRequestKycStart}
                   disabled={starting}
                   className="inline-flex items-center justify-center px-6 py-3 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-xl transition-all shadow-md hover:shadow-lg disabled:opacity-70 disabled:cursor-not-allowed"
                 >
@@ -297,7 +324,6 @@ export function Verification() {
           </div>
         )}
 
-        {/* State: In Progress / Review */}
         {/* State: Pending or Review */}
         {(isPending || isReview) && (
           <div className="p-8 text-center">
@@ -322,7 +348,7 @@ export function Verification() {
               {isPending && (
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full mt-2">
                   <button
-                    onClick={startVerification}
+                    onClick={handleRequestKycStart}
                     disabled={starting}
                     className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-all shadow-sm hover:shadow active:scale-95 disabled:opacity-70 disabled:pointer-events-none"
                   >
@@ -352,6 +378,128 @@ export function Verification() {
         )}
 
       </div>
+
+      {/* Diálogo / Modal de Permissão de Câmera */}
+      {showCameraModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div 
+            className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col transition-all transform animate-in zoom-in-95 duration-200"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="camera-dialog-title"
+          >
+            {/* Header */}
+            <div className="relative px-6 pt-6 pb-4 flex items-start justify-between border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl bg-teal-50 border border-teal-100 flex items-center justify-center text-teal-600 shadow-sm shrink-0">
+                  <Camera className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 id="camera-dialog-title" className="text-lg font-bold text-slate-900">
+                    Permissão de Acesso à Câmera
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Verificação Obrigatória de Identidade (KYC)
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCameraModal(false)}
+                disabled={starting}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+                title="Fechar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-4 text-slate-600 text-sm">
+              <p className="leading-relaxed text-slate-700">
+                Para iniciar a verificação de segurança, a plataforma necessita de autorização para utilizar a câmera do seu dispositivo:
+              </p>
+
+              <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200/80">
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-md bg-teal-100 text-teal-700 flex items-center justify-center shrink-0 mt-0.5">
+                    <ShieldCheck className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <strong className="block text-slate-800 text-xs font-semibold">Captura de Documentos</strong>
+                    <span className="text-xs text-slate-600">Fotos nítidas da frente e do verso de documento com foto (RG ou CNH).</span>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-md bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 mt-0.5">
+                    <UserCheck className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <strong className="block text-slate-800 text-xs font-semibold">Biometria Facial Ao Vivo</strong>
+                    <span className="text-xs text-slate-600">Comprovação de vivacidade (Liveness) para confirmar que você é o titular legítimo.</span>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-md bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 mt-0.5">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <strong className="block text-slate-800 text-xs font-semibold">Privacidade & Criptografia</strong>
+                    <span className="text-xs text-slate-600">Imagens transmitidas em canal seguro certificado e utilizadas apenas para validação.</span>
+                  </div>
+                </div>
+              </div>
+
+              {modalCameraError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 space-y-1">
+                  <div className="font-bold flex items-center gap-1.5">
+                    <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                    Permissão Necessária
+                  </div>
+                  <p>{modalCameraError}</p>
+                </div>
+              )}
+
+              <p className="text-xs text-slate-500">
+                Ao clicar no botão abaixo, o seu navegador poderá exibir uma solicitação no topo da tela. Clique em <strong>"Permitir"</strong> para continuar.
+              </p>
+            </div>
+
+            {/* Footer Actions */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowCameraModal(false)}
+                disabled={starting}
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 font-semibold text-xs transition-all disabled:opacity-60"
+              >
+                Agora Não / Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={handleConfirmCameraAndStart}
+                disabled={starting}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs shadow-sm hover:shadow transition-all disabled:opacity-60"
+              >
+                {starting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Solicitando permissão...
+                  </>
+                ) : (
+                  <>
+                    <Camera className="w-4 h-4" />
+                    Permitir e Iniciar Verificação
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
