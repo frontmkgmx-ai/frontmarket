@@ -146,7 +146,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                     localStorage.setItem('fmk_cached_store', JSON.stringify(activeStore));
                   } catch {}
                 } else {
-                  set({ loading: false, initialized: true });
+                  // Loja fantasma (não existe no servidor)
+                  try {
+                    localStorage.removeItem('fmk_cached_store');
+                  } catch {}
+                  set({ activeStore: null, loading: false, initialized: true });
                 }
               }, (err) => {
                 clearTimeout(storeTimeout);
