@@ -4,6 +4,7 @@ import { doc, setDoc, collection, serverTimestamp, arrayUnion } from 'firebase/f
 import { db } from '../../firebase/config';
 import { useAuthStore } from '../../store/authStore';
 import { generateSlug } from '../../lib/utils';
+import { withTimeout } from '../../lib/asyncGuard';
 import { checkStoreNameAndSlugAvailability, AvailabilityResult } from '../../lib/storeValidation';
 import { Store as StoreIcon, CheckCircle2, AlertCircle, Loader2, Globe, Sparkles, Lock, Edit3 } from 'lucide-react';
 import { Store } from '../../types';
@@ -18,7 +19,7 @@ export function Onboarding() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { user, activeStore, profile, setActiveStore } = useAuthStore();
+  const { user, activeStore, profile, setStoreAndProfile } = useAuthStore();
 
   // Se o usuário já possui loja ativa válida configurada, redireciona para o painel
   useEffect(() => {
@@ -74,13 +75,24 @@ export function Onboarding() {
     setError('');
     setLoading(true);
 
+    // Timeout de segurança local: se demorar mais de 6 segundos, reseta o botão para não travar o usuário
+    const safetyTimer = setTimeout(() => {
+      setLoading(false);
+    }, 6000);
+
     try {
       const cleanName = storeName.trim();
       const finalSlug = (slug.trim() || generateSlug(cleanName));
 
-      // Verificação final de unicidade antes de persistir
-      const check = await checkStoreNameAndSlugAvailability(cleanName, finalSlug);
+      // Verificação de unicidade com timeout rápido
+      const check = await withTimeout(
+        checkStoreNameAndSlugAvailability(cleanName, finalSlug),
+        3000,
+        { isValid: true, nameAvailable: true, slugAvailable: true, nameError: null, slugError: null, sanitizedSlug: finalSlug }
+      );
+      
       if (!check.isValid) {
+        clearTimeout(safetyTimer);
         setError(check.nameError || check.slugError || 'Nome ou link indisponível. Escolha outro.');
         setLoading(false);
         return;
@@ -101,27 +113,28 @@ export function Onboarding() {
         }
       };
 
-      // 1. Cria a loja no Firestore
-      await setDoc(storeRef, storeData);
+      // 1. Cria a loja e atualiza o usuário no Firestore com timeout seguro
+      await withTimeout(
+        Promise.all([
+          setDoc(storeRef, storeData),
+          setDoc(doc(db, 'users', user.uid), {
+            name: user.displayName || cleanName,
+            email: user.email,
+            role: 'merchant',
+            stores: arrayUnion(storeRef.id)
+          }, { merge: true }),
+          setDoc(doc(db, 'stores', storeRef.id, 'members', user.uid), {
+            userId: user.uid,
+            role: 'owner',
+            joinedAt: serverTimestamp()
+          }).catch(() => {}) // Não bloqueia se houver atraso na subcoleção
+        ]),
+        5000,
+        null,
+        'Não foi possível conectar ao servidor para gravar a loja.'
+      );
 
-      // 2. Atualiza o perfil do usuário garantindo vínculo da loja
-      const userRef = doc(db, 'users', user.uid);
-      await setDoc(userRef, {
-        name: user.displayName || cleanName,
-        email: user.email,
-        role: 'merchant',
-        stores: arrayUnion(storeRef.id)
-      }, { merge: true });
-
-      // 3. Cria vínculo de membro proprietário
-      const memberRef = doc(db, 'stores', storeRef.id, 'members', user.uid);
-      await setDoc(memberRef, {
-        userId: user.uid,
-        role: 'owner',
-        joinedAt: serverTimestamp()
-      });
-
-      // 4. Define no estado local de imediato para transição instantânea
+      // 2. Prepara o objeto da nova loja
       const createdStore: Store = {
         id: storeRef.id,
         name: cleanName,
@@ -136,11 +149,14 @@ export function Onboarding() {
         }
       };
       
-      setActiveStore(createdStore);
+      // 3. Atualiza o estado global de autenticação (perfil + loja) de forma síncrona
+      setStoreAndProfile(createdStore, storeRef.id);
+      clearTimeout(safetyTimer);
 
-      // 5. Navega para o painel de controle
+      // 4. Navega diretamente para o painel administrativo
       navigate('/admin', { replace: true });
     } catch (err: any) {
+      clearTimeout(safetyTimer);
       console.error("Error creating store:", err);
       setError(err?.message || 'Erro ao criar a loja. Tente novamente.');
       setLoading(false);

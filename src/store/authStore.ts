@@ -13,6 +13,7 @@ interface AuthState {
   initialize: () => void;
   reloadProfile: () => Promise<void>;
   setActiveStore: (store: Store | null) => void;
+  setStoreAndProfile: (store: Store, storeId: string) => void;
   signOut: () => Promise<void>;
 }
 
@@ -189,6 +190,34 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       } else {
         localStorage.removeItem('fmk_cached_store');
       }
+    } catch {}
+  },
+
+  setStoreAndProfile: (store: Store, storeId: string) => {
+    const current = get();
+    const existingStores = current.profile?.stores || [];
+    const updatedStores = existingStores.includes(storeId) ? existingStores : [...existingStores, storeId];
+    
+    const updatedProfile: UserProfile = {
+      id: current.user?.uid || '',
+      name: current.user?.displayName || store.name,
+      email: current.user?.email || '',
+      role: 'merchant',
+      stores: updatedStores,
+      ...(current.profile || {})
+    };
+    updatedProfile.stores = updatedStores;
+
+    set({ 
+      activeStore: store, 
+      profile: updatedProfile,
+      loading: false,
+      initialized: true
+    });
+
+    try {
+      localStorage.setItem('fmk_cached_store', JSON.stringify(store));
+      localStorage.setItem('fmk_cached_profile', JSON.stringify(updatedProfile));
     } catch {}
   },
   

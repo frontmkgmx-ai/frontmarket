@@ -13,14 +13,12 @@ export function StoreGuard() {
     return <Navigate to="/login" replace />;
   }
 
-  // Se o usuário não tem perfil carregado ou não possui loja com nome e slug definidos, redireciona estritamente para onboarding
+  // Se o usuário não possui loja com nome e slug definidos, redireciona para onboarding
   const hasValidStore = 
-    activeStore && 
-    Boolean(activeStore.id) &&
-    Boolean(activeStore.name?.trim()) && 
-    Boolean(activeStore.slug?.trim()) &&
-    Array.isArray(profile?.stores) && 
-    profile.stores.length > 0;
+    Boolean(activeStore) && 
+    Boolean(activeStore?.id) &&
+    Boolean(activeStore?.name?.trim()) && 
+    Boolean(activeStore?.slug?.trim());
 
   if (!hasValidStore) {
     return <Navigate to="/onboarding" replace />;

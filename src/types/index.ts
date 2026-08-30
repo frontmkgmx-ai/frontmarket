@@ -2,7 +2,8 @@ export interface UserProfile {
   id: string;
   email: string;
   name: string;
-  createdAt: string;
+  createdAt?: string;
+  role?: string;
   stores?: string[]; // IDs of stores this user is part of
 }
 

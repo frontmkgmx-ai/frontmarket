@@ -50,7 +50,8 @@ service cloud.firestore {
 
       // 1. Membros da equipe da loja
       match /members/{memberId} {
-        allow read, write: if isStoreMember(storeId);
+        allow read: if isStoreMember(storeId);
+        allow write: if isAuthenticated() && (request.auth.uid == memberId || isStoreMember(storeId));
       }
 
       // 2. Categorias de produtos

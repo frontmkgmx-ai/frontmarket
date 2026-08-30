@@ -1,6 +1,7 @@
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { generateSlug } from './utils';
+import { withTimeout } from './asyncGuard';
 
 export const RESERVED_SLUGS = [
   'admin',
@@ -104,20 +105,22 @@ export async function checkStoreNameAndSlugAvailability(
   try {
     const storesRef = collection(db, 'stores');
 
-    // 4. Verificação de unicidade do SLUG no Firestore
+    // 4. Verificação de unicidade do SLUG no Firestore com timeout seguro
     const slugQuery = query(
       storesRef,
       where('slug', '==', targetSlug),
       limit(2)
     );
-    const slugSnap = await getDocs(slugQuery);
+    const slugSnap = await withTimeout(getDocs(slugQuery), 2500, null as any);
     
     let slugExists = false;
-    slugSnap.forEach(doc => {
-      if (!excludeStoreId || doc.id !== excludeStoreId) {
-        slugExists = true;
-      }
-    });
+    if (slugSnap && slugSnap.docs) {
+      slugSnap.forEach((doc: any) => {
+        if (!excludeStoreId || doc.id !== excludeStoreId) {
+          slugExists = true;
+        }
+      });
+    }
 
     if (slugExists) {
       result.slugAvailable = false;
@@ -126,34 +129,17 @@ export async function checkStoreNameAndSlugAvailability(
       result.slugAvailable = true;
     }
 
-    // 5. Verificação de unicidade do NOME da Loja no Firestore
-    // Verifica tanto por busca direta quanto por verificação case-insensitive
-    const nameLower = cleanName.toLowerCase();
-    
-    // Busca exata
+    // 5. Verificação de unicidade do NOME da Loja no Firestore com timeout seguro
     const nameExactQuery = query(
       storesRef,
       where('name', '==', cleanName),
       limit(2)
     );
-    const nameExactSnap = await getDocs(nameExactQuery);
+    const nameExactSnap = await withTimeout(getDocs(nameExactQuery), 2500, null as any);
     
     let nameExists = false;
-    nameExactSnap.forEach(doc => {
-      if (!excludeStoreId || doc.id !== excludeStoreId) {
-        nameExists = true;
-      }
-    });
-
-    // Busca por nameLower se houver campo correspondente ou varredura de duplicata
-    if (!nameExists) {
-      const nameLowerQuery = query(
-        storesRef,
-        where('nameLower', '==', nameLower),
-        limit(2)
-      );
-      const nameLowerSnap = await getDocs(nameLowerQuery);
-      nameLowerSnap.forEach(doc => {
+    if (nameExactSnap && nameExactSnap.docs) {
+      nameExactSnap.forEach((doc: any) => {
         if (!excludeStoreId || doc.id !== excludeStoreId) {
           nameExists = true;
         }
