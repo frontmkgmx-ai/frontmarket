@@ -76,32 +76,36 @@ export function Verification() {
     setShowCameraModal(true);
   };
 
-  const handleConfirmCameraAndStart = async () => {
+  const handleConfirmCameraAndStart = async (forceStart: boolean | React.MouseEvent = false) => {
+    const isForced = forceStart === true;
+
     try {
       setStarting(true);
       setModalCameraError(null);
       
-      // Solicitar permissão de câmera explicitamente
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('Seu navegador não possui suporte para captura de vídeo pela câmera.');
-      }
+      if (!isForced) {
+        // Solicitar permissão de câmera explicitamente
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error('Seu navegador não possui suporte para captura de vídeo pela câmera. Se estiver usando iframe, tente forçar a abertura.');
+        }
 
-      let stream: MediaStream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        // Libera a câmera temporária após confirmação
-        stream.getTracks().forEach(track => track.stop());
-      } catch (camErr: any) {
-        if (camErr.name === 'NotAllowedError' || camErr.name === 'PermissionDeniedError') {
-          throw new Error('Permissão negada. Por favor, clique no ícone de cadeado/câmera na barra de endereço do seu navegador e autorize o uso da câmera.');
-        } else if (camErr.name === 'NotFoundError' || camErr.name === 'DevicesNotFoundError') {
-          throw new Error('Nenhuma câmera foi detectada no seu dispositivo. Conecte uma câmera para continuar.');
-        } else {
-          throw new Error('Não foi possível acessar a câmera: ' + (camErr.message || 'Erro desconhecido'));
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          // Libera a câmera temporária após confirmação
+          stream.getTracks().forEach(track => track.stop());
+        } catch (camErr: any) {
+          if (camErr.name === 'NotAllowedError' || camErr.name === 'PermissionDeniedError') {
+            throw new Error('Permissão negada. Por favor, clique no ícone de cadeado/câmera na barra de endereço do seu navegador e autorize o uso da câmera. Se a opção não estiver disponível (por exemplo, em domínio redirecionado/iframe), tente forçar a abertura clicando no botão abaixo.');
+          } else if (camErr.name === 'NotFoundError' || camErr.name === 'DevicesNotFoundError') {
+            throw new Error('Nenhuma câmera foi detectada no seu dispositivo. Conecte uma câmera para continuar.');
+          } else {
+            throw new Error('Não foi possível acessar a câmera: ' + (camErr.message || 'Erro desconhecido'));
+          }
         }
       }
 
-      // Usuário concedeu acesso à câmera; fecha modal e gera sessão segura
+      // Usuário concedeu acesso à câmera ou forçou bypass; fecha modal e gera sessão segura
       setShowCameraModal(false);
 
       const user = auth.currentUser;
@@ -131,8 +135,12 @@ export function Verification() {
       }
       
       if (data.verification_url) {
-        // Redirecionar para URL única e criptografada do Didit
-        window.location.href = data.verification_url;
+        // Redirecionar para URL única e criptografada do Didit (quebra iframe caso exista)
+        if (window.top) {
+          window.top.location.href = data.verification_url;
+        } else {
+          window.location.href = data.verification_url;
+        }
       }
     } catch (err: any) {
       setModalCameraError(err.message || 'Ocorreu um erro ao autorizar a câmera.');
@@ -467,7 +475,7 @@ export function Verification() {
             </div>
 
             {/* Footer Actions */}
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-end gap-3">
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row flex-wrap items-center justify-end gap-3">
               <button
                 type="button"
                 onClick={() => setShowCameraModal(false)}
@@ -479,7 +487,7 @@ export function Verification() {
 
               <button
                 type="button"
-                onClick={handleConfirmCameraAndStart}
+                onClick={() => handleConfirmCameraAndStart(false)}
                 disabled={starting}
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs shadow-sm hover:shadow transition-all disabled:opacity-60"
               >
@@ -495,6 +503,17 @@ export function Verification() {
                   </>
                 )}
               </button>
+              
+              {modalCameraError && (
+                <button
+                  type="button"
+                  onClick={() => handleConfirmCameraAndStart(true)}
+                  disabled={starting}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs shadow-sm hover:shadow transition-all disabled:opacity-60 mt-2 sm:mt-0"
+                >
+                  Forçar abertura em tela cheia
+                </button>
+              )}
             </div>
           </div>
         </div>
