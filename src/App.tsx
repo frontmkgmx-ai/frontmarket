@@ -33,13 +33,15 @@ export default function App() {
     initialize();
   }, [initialize]);
 
+  const isAdminHost = typeof window !== 'undefined' && window.location.hostname.startsWith('admin.');
+
   return (
     <div className="relative min-h-screen overflow-x-hidden font-sans text-slate-900 antialiased selection:bg-teal-500 selection:text-white">
       <AuraBackground />
       <BrowserRouter>
         <Routes>
-          {/* Public Platform Landing */}
-          <Route path="/" element={<PlatformLanding />} />
+          {/* Public Platform Landing or Admin Redirect on admin subdomain */}
+          <Route path="/" element={isAdminHost ? <Navigate to="/admin" replace /> : <PlatformLanding />} />
 
           {/* Platform Auth Routes (For Store Owners) */}
           <Route path="/login" element={<Login />} />

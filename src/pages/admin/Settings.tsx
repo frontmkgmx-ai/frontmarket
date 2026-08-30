@@ -9,28 +9,24 @@ import {
   CheckCircle2, 
   Trash2, 
   Sparkles, 
-  Palette, 
-  Globe, 
-  Mail, 
-  Phone, 
   AlertTriangle,
-  RefreshCw,
-  ExternalLink
+  RefreshCw
 } from 'lucide-react';
+import { withTimeout } from '../../lib/asyncGuard';
 
 export function Settings() {
   const { activeStore, setActiveStore } = useAuthStore();
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!activeStore);
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   // Form State
-  const [name, setName] = useState('');
-  const [slug, setSlug] = useState('');
-  const [themeColor, setThemeColor] = useState('#4f46e5');
-  const [contactEmail, setContactEmail] = useState('');
-  const [supportPhone, setSupportPhone] = useState('');
-  const [currency, setCurrency] = useState('BRL');
+  const [name, setName] = useState(activeStore?.name || '');
+  const [slug, setSlug] = useState(activeStore?.slug || '');
+  const [themeColor, setThemeColor] = useState(activeStore?.settings?.themeColor || '#4f46e5');
+  const [contactEmail, setContactEmail] = useState(activeStore?.settings?.contactEmail || '');
+  const [supportPhone, setSupportPhone] = useState(activeStore?.settings?.supportPhone || '');
+  const [currency, setCurrency] = useState(activeStore?.settings?.currency || 'BRL');
 
   // Seed / Cleanup State
   const [isSeeding, setIsSeeding] = useState(false);
@@ -39,10 +35,18 @@ export function Settings() {
 
   useEffect(() => {
     async function loadStoreSettings() {
-      if (!activeStore) return;
+      if (!activeStore) {
+        setLoading(false);
+        return;
+      }
       try {
-        const docSnap = await getDoc(doc(db, 'stores', activeStore.id));
-        if (docSnap.exists()) {
+        const docSnap = await withTimeout(
+          getDoc(doc(db, 'stores', activeStore.id)),
+          3000,
+          null
+        );
+
+        if (docSnap && docSnap.exists()) {
           const data = docSnap.data();
           setName(data.name || '');
           setSlug(data.slug || '');
@@ -52,7 +56,7 @@ export function Settings() {
           setCurrency(data.settings?.currency || 'BRL');
         }
       } catch (err) {
-        console.error(err);
+        console.warn("Aviso ao carregar configurações:", err);
       } finally {
         setLoading(false);
       }
@@ -137,23 +141,23 @@ export function Settings() {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
-        <div className="inline-block w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-sm text-slate-500 mt-3">Carregando configurações...</p>
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-10 text-center">
+        <div className="inline-block w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-xs sm:text-sm text-slate-500 mt-3">Carregando configurações...</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8 max-w-4xl">
+    <div className="space-y-6 max-w-4xl">
       {/* Header com HUD responsivo */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            <SettingsIcon className="w-7 h-7 text-indigo-600" />
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+            <SettingsIcon className="w-6 h-6 sm:w-7 sm:h-7 text-indigo-600" />
             Configurações da Loja
           </h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
             Personalize a identidade visual, dados de contato e gerencie os dados
           </p>
         </div>
@@ -161,7 +165,7 @@ export function Settings() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm shadow-sm transition-all disabled:opacity-50 cursor-pointer self-start sm:self-auto"
+          className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs sm:text-sm shadow-xs transition-all disabled:opacity-50 cursor-pointer self-start sm:self-auto"
         >
           <Save className="w-4 h-4" />
           {saving ? 'Salvando...' : 'Salvar Alterações'}
@@ -171,13 +175,13 @@ export function Settings() {
       {savedSuccess && (
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl flex items-center gap-3 animate-in fade-in">
           <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-          <span className="text-sm font-medium">Configurações salvas com sucesso!</span>
+          <span className="text-xs sm:text-sm font-semibold">Configurações salvas com sucesso!</span>
         </div>
       )}
 
       {/* Formulário Principal */}
-      <form onSubmit={handleSave} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6 space-y-6">
-        <h2 className="text-base font-bold text-slate-900 border-b border-slate-100 pb-3">
+      <form onSubmit={handleSave} className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs p-5 sm:p-6 space-y-5">
+        <h2 className="text-sm sm:text-base font-bold text-slate-900 border-b border-slate-100 pb-3">
           Identidade & Domínio
         </h2>
 
@@ -191,7 +195,7 @@ export function Settings() {
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full py-2.5 px-3 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              className="w-full py-2 px-3 border border-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
             />
           </div>
 
@@ -200,7 +204,7 @@ export function Settings() {
               Slug da URL (Link da Vitrine)
             </label>
             <div className="flex items-center">
-              <span className="bg-slate-100 border border-r-0 border-slate-200 text-slate-500 px-3 py-2.5 text-xs rounded-l-lg select-none">
+              <span className="bg-slate-100 border border-r-0 border-slate-200 text-slate-500 px-3 py-2 text-xs rounded-l-xl select-none">
                 /
               </span>
               <input
@@ -208,7 +212,7 @@ export function Settings() {
                 required
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
-                className="w-full py-2.5 px-3 border border-slate-200 rounded-r-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono"
+                className="w-full py-2 px-3 border border-slate-200 rounded-r-xl text-xs sm:text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono"
               />
             </div>
           </div>
@@ -222,13 +226,13 @@ export function Settings() {
                 type="color"
                 value={themeColor}
                 onChange={(e) => setThemeColor(e.target.value)}
-                className="w-10 h-10 p-1 rounded-lg border border-slate-200 cursor-pointer"
+                className="w-9 h-9 p-1 rounded-xl border border-slate-200 cursor-pointer"
               />
               <input
                 type="text"
                 value={themeColor}
                 onChange={(e) => setThemeColor(e.target.value)}
-                className="w-32 py-2.5 px-3 border border-slate-200 rounded-lg text-sm font-mono uppercase focus:outline-none"
+                className="w-28 py-2 px-3 border border-slate-200 rounded-xl text-xs font-mono uppercase focus:outline-none"
               />
             </div>
           </div>
@@ -240,7 +244,7 @@ export function Settings() {
             <select
               value={currency}
               onChange={(e) => setCurrency(e.target.value)}
-              className="w-full py-2.5 px-3 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              className="w-full py-2 px-3 border border-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
             >
               <option value="BRL">Real Brasileiro (R$ - BRL)</option>
               <option value="USD">Dólar Americano ($ - USD)</option>
@@ -249,7 +253,7 @@ export function Settings() {
           </div>
         </div>
 
-        <h2 className="text-base font-bold text-slate-900 border-b border-slate-100 pb-3 pt-4">
+        <h2 className="text-sm sm:text-base font-bold text-slate-900 border-b border-slate-100 pb-3 pt-3">
           Atendimento & Suporte ao Cliente
         </h2>
 
@@ -263,7 +267,7 @@ export function Settings() {
               value={contactEmail}
               onChange={(e) => setContactEmail(e.target.value)}
               placeholder="suporte@sualoja.com"
-              className="w-full py-2.5 px-3 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              className="w-full py-2 px-3 border border-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
             />
           </div>
 
@@ -276,16 +280,16 @@ export function Settings() {
               value={supportPhone}
               onChange={(e) => setSupportPhone(e.target.value)}
               placeholder="(11) 99999-9999"
-              className="w-full py-2.5 px-3 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              className="w-full py-2 px-3 border border-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
             />
           </div>
         </div>
       </form>
 
       {/* Seção de Automação & Limpeza do Banco de Dados */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6 space-y-4">
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs p-5 sm:p-6 space-y-4">
         <div>
-          <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+          <h2 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
             <RefreshCw className="w-5 h-5 text-indigo-600" />
             Gerenciador de Dados do Banco (Realtime / Firestore)
           </h2>
@@ -295,19 +299,19 @@ export function Settings() {
         </div>
 
         {actionMessage && (
-          <div className={`p-4 rounded-xl text-sm font-medium flex items-center gap-2.5 ${
+          <div className={`p-3.5 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2.5 ${
             actionMessage.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'
           }`}>
-            {actionMessage.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-600" /> : <AlertTriangle className="w-5 h-5 text-rose-600" />}
+            {actionMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />}
             {actionMessage.text}
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
           {/* Card Seed Demo */}
           <div className="p-4 rounded-xl border border-indigo-100 bg-indigo-50/50 flex flex-col justify-between space-y-3">
             <div>
-              <div className="flex items-center gap-2 font-bold text-indigo-950 text-sm">
+              <div className="flex items-center gap-2 font-bold text-indigo-950 text-xs sm:text-sm">
                 <Sparkles className="w-4 h-4 text-indigo-600" />
                 Popular com Dados de Teste
               </div>
@@ -318,7 +322,7 @@ export function Settings() {
             <button
               onClick={handleRunSeed}
               disabled={isSeeding || isCleaning}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50 shadow-sm"
+              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50 shadow-xs"
             >
               <Sparkles className="w-3.5 h-3.5" />
               {isSeeding ? 'Populando banco de dados...' : 'Gerar Dados de Teste (Seed)'}
@@ -328,7 +332,7 @@ export function Settings() {
           {/* Card Clean Data */}
           <div className="p-4 rounded-xl border border-rose-100 bg-rose-50/40 flex flex-col justify-between space-y-3">
             <div>
-              <div className="flex items-center gap-2 font-bold text-rose-950 text-sm">
+              <div className="flex items-center gap-2 font-bold text-rose-950 text-xs sm:text-sm">
                 <Trash2 className="w-4 h-4 text-rose-600" />
                 Limpar Banco de Dados da Loja
               </div>
@@ -339,7 +343,7 @@ export function Settings() {
             <button
               onClick={handleRunClean}
               disabled={isSeeding || isCleaning}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg bg-white border border-rose-300 hover:bg-rose-50 text-rose-700 font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-white border border-rose-300 hover:bg-rose-50 text-rose-700 font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50"
             >
               <Trash2 className="w-3.5 h-3.5" />
               {isCleaning ? 'Limpando dados...' : 'Limpar Todos os Dados'}

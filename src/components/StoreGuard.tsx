@@ -1,19 +1,15 @@
-import { useEffect } from 'react';
 import { Navigate, Outlet } from 'react-router';
 import { useAuthStore } from '../store/authStore';
+import { SmartLoader } from './SmartLoader';
 
 export function StoreGuard() {
   const { activeStore, loading, initialized, profile } = useAuthStore();
 
   if (!initialized || loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-      </div>
-    );
+    return <SmartLoader message="Carregando sua loja..." timeoutSeconds={4} />;
   }
 
-  // If logged in but no store created yet, force them to create one
+  // Se o usuário está logado mas ainda não tem nenhuma loja criada, vai para onboarding
   if (profile && (!activeStore || !profile.stores || profile.stores.length === 0)) {
     return <Navigate to="/onboarding" replace />;
   }

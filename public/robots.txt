@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /onboarding
+Disallow: /checkout
+
+Sitemap: https://frontmarket.cysmk.online/sitemap.xml

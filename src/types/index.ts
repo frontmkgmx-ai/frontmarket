@@ -20,6 +20,7 @@ export interface StoreSettings {
   themeColor: string;
   logoUrl?: string;
   contactEmail?: string;
+  supportPhone?: string;
 }
 
 export interface Category {

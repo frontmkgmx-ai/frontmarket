@@ -5,16 +5,24 @@ import { useAuthStore } from '../../store/authStore';
 import { DollarSign, ShoppingBag, Users, Package, ExternalLink, Sparkles } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
 import { Link } from 'react-router';
+import { FastCache } from '../../lib/cache';
 
 export function Dashboard() {
   const { activeStore } = useAuthStore();
-  const [stats, setStats] = useState({
-    totalSales: 0,
-    totalOrders: 0,
-    totalProducts: 0,
-    totalCustomers: 0
+  const cacheKey = activeStore?.id ? `dash_stats_${activeStore.id}` : '';
+  
+  const [stats, setStats] = useState(() => {
+    return (cacheKey && FastCache.get(cacheKey)) || {
+      totalSales: 0,
+      totalOrders: 0,
+      totalProducts: 0,
+      totalCustomers: 0
+    };
   });
-  const [loading, setLoading] = useState(true);
+  
+  const [loading, setLoading] = useState<boolean>(() => {
+    return cacheKey ? !FastCache.get(cacheKey) : true;
+  });
 
   useEffect(() => {
     if (!activeStore?.id) {
@@ -22,15 +30,23 @@ export function Dashboard() {
       return;
     }
 
-    setLoading(true);
+    // Trava de segurança anti-loading infinito (2.5s máximo)
+    const safetyTimer = setTimeout(() => {
+      setLoading(false);
+    }, 2500);
 
     // 1. Escuta contagem de produtos em tempo real
     const productsRef = collection(db, 'stores', activeStore.id, 'products');
     const unsubProducts = onSnapshot(productsRef, (snap) => {
-      setStats(prev => ({ ...prev, totalProducts: snap.size }));
+      setStats(prev => {
+        const next = { ...prev, totalProducts: snap.size };
+        if (cacheKey) FastCache.set(cacheKey, next);
+        return next;
+      });
       setLoading(false);
+      clearTimeout(safetyTimer);
     }, (err) => {
-      console.error("Products listener error:", err);
+      console.warn("Products listener warning:", err);
       setLoading(false);
     });
 
@@ -42,29 +58,34 @@ export function Dashboard() {
       snap.forEach((doc) => {
         sales += doc.data().total || 0;
       });
-      setStats(prev => ({ 
-        ...prev, 
-        totalSales: sales, 
-        totalOrders: snap.size 
-      }));
+      setStats(prev => {
+        const next = { ...prev, totalSales: sales, totalOrders: snap.size };
+        if (cacheKey) FastCache.set(cacheKey, next);
+        return next;
+      });
     }, (err) => {
-      console.error("Orders listener error:", err);
+      console.warn("Orders listener warning:", err);
     });
 
     // 3. Escuta clientes em tempo real
     const customersRef = collection(db, 'stores', activeStore.id, 'customers');
     const unsubCustomers = onSnapshot(customersRef, (snap) => {
-      setStats(prev => ({ ...prev, totalCustomers: snap.size }));
+      setStats(prev => {
+        const next = { ...prev, totalCustomers: snap.size };
+        if (cacheKey) FastCache.set(cacheKey, next);
+        return next;
+      });
     }, (err) => {
-      console.error("Customers listener error:", err);
+      console.warn("Customers listener warning:", err);
     });
 
     return () => {
+      clearTimeout(safetyTimer);
       unsubProducts();
       unsubOrders();
       unsubCustomers();
     };
-  }, [activeStore?.id]);
+  }, [activeStore?.id, cacheKey]);
 
   const statCards = [
     { name: 'Faturamento', value: formatCurrency(stats.totalSales), icon: DollarSign, color: 'text-emerald-600', bg: 'bg-emerald-50' },
@@ -75,13 +96,13 @@ export function Dashboard() {
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="h-8 bg-gray-200 rounded-md w-48 animate-pulse"></div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="space-y-6 animate-pulse">
+        <div className="h-8 bg-slate-200 rounded-md w-48"></div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           {[1, 2, 3, 4].map(i => (
-            <div key={i} className="h-32 bg-white rounded-xl shadow-sm border border-gray-100 p-6 animate-pulse">
-              <div className="h-4 bg-gray-200 rounded w-24 mb-4"></div>
-              <div className="h-8 bg-gray-200 rounded w-16"></div>
+            <div key={i} className="h-28 bg-white rounded-2xl border border-slate-100 p-5">
+              <div className="h-3.5 bg-slate-200 rounded w-20 mb-3"></div>
+              <div className="h-7 bg-slate-200 rounded w-24"></div>
             </div>
           ))}
         </div>
@@ -90,17 +111,17 @@ export function Dashboard() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <div className="flex items-center space-x-2">
-            <h1 className="text-2xl font-bold text-gray-900">Visão Geral</h1>
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Visão Geral</h1>
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
               <Sparkles className="w-3 h-3 mr-1" /> Tempo Real
             </span>
           </div>
-          <p className="text-sm text-gray-500 mt-1">
-            Loja: <span className="font-semibold text-gray-700">{activeStore?.name}</span> ({activeStore?.slug})
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            Loja: <span className="font-semibold text-slate-700">{activeStore?.name}</span> ({activeStore?.slug})
           </p>
         </div>
         
@@ -108,45 +129,45 @@ export function Dashboard() {
           <Link 
             to={`/${activeStore.slug}`} 
             target="_blank"
-            className="inline-flex items-center justify-center px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 shadow-sm transition-all"
+            className="inline-flex items-center justify-center px-4 py-2 bg-white border border-slate-200 hover:border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs transition-all"
           >
-            <span>Acessar Vitrine da Loja</span>
-            <ExternalLink className="w-4 h-4 ml-2 text-gray-400" />
+            <span>Acessar Vitrine</span>
+            <ExternalLink className="w-3.5 h-3.5 ml-2 text-slate-400" />
           </Link>
         )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {statCards.map((stat) => (
-          <div key={stat.name} className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
+          <div key={stat.name} className="bg-white rounded-2xl border border-slate-100 p-5 shadow-2xs hover:shadow-xs transition-shadow">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-500">{stat.name}</p>
-                <p className="text-2xl font-bold text-gray-900 mt-2">{stat.value}</p>
+                <p className="text-xs font-medium text-slate-500">{stat.name}</p>
+                <p className="text-xl sm:text-2xl font-bold text-slate-900 mt-1">{stat.value}</p>
               </div>
-              <div className={`p-3 rounded-xl ${stat.bg}`}>
-                <stat.icon className={`w-6 h-6 ${stat.color}`} />
+              <div className={`p-2.5 rounded-xl ${stat.bg}`}>
+                <stat.icon className={`w-5 h-5 ${stat.color}`} />
               </div>
             </div>
           </div>
         ))}
       </div>
 
-      {stats.totalOrders === 0 && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-10 sm:p-14 text-center max-w-2xl mx-auto">
-          <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto mb-4 text-indigo-600">
-            <ShoppingBag className="w-8 h-8" />
+      {stats.totalOrders === 0 && stats.totalProducts === 0 && (
+        <div className="bg-white rounded-2xl border border-slate-100 p-8 sm:p-12 text-center max-w-xl mx-auto shadow-2xs">
+          <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto mb-3 text-indigo-600">
+            <ShoppingBag className="w-7 h-7" />
           </div>
-          <h3 className="text-xl font-bold text-gray-900 mb-2">Sua loja está online e pronta para vender!</h3>
-          <p className="text-gray-500 text-sm max-w-md mx-auto mb-6">
-            Adicione seus primeiros produtos no catálogo e compartilhe o link público da sua loja para receber pedidos.
+          <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-1.5">Sua loja está online e pronta!</h3>
+          <p className="text-slate-500 text-xs sm:text-sm max-w-sm mx-auto mb-5 leading-relaxed">
+            Adicione seus primeiros produtos no catálogo e compartilhe o link público para receber pedidos.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             <Link
               to="/admin/products/new"
-              className="inline-flex items-center px-5 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 shadow-sm transition-colors"
+              className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white text-xs sm:text-sm font-semibold rounded-xl hover:bg-indigo-700 shadow-xs transition-colors"
             >
-              <Package className="w-4 h-4 mr-2" />
+              <Package className="w-4 h-4 mr-1.5" />
               Cadastrar Primeiro Produto
             </Link>
           </div>

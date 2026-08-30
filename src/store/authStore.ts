@@ -19,11 +19,28 @@ interface AuthState {
 let authListener: Unsubscribe | null = null;
 let profileListener: Unsubscribe | null = null;
 let storeListener: Unsubscribe | null = null;
+let safetyTimeout: any = null;
+
+// Recupera cache local imediato para inicialização a 0ms
+const getInitialCache = () => {
+  try {
+    const cachedProfile = localStorage.getItem('fmk_cached_profile');
+    const cachedStore = localStorage.getItem('fmk_cached_store');
+    return {
+      profile: cachedProfile ? JSON.parse(cachedProfile) : null,
+      activeStore: cachedStore ? JSON.parse(cachedStore) : null,
+    };
+  } catch {
+    return { profile: null, activeStore: null };
+  }
+};
+
+const initialCache = getInitialCache();
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
-  profile: null,
-  activeStore: null,
+  profile: initialCache.profile,
+  activeStore: initialCache.activeStore,
   loading: true,
   initialized: false,
   
@@ -38,24 +55,43 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (profileDoc.exists()) {
         const profile = profileDoc.data() as UserProfile;
         set({ profile });
+        try {
+          localStorage.setItem('fmk_cached_profile', JSON.stringify(profile));
+        } catch {}
         
         if (profile.stores && profile.stores.length > 0) {
           const storeDoc = await getDoc(doc(db, 'stores', profile.stores[0]));
           if (storeDoc.exists()) {
-            set({ activeStore: { id: storeDoc.id, ...storeDoc.data() } as Store });
+            const activeStore = { id: storeDoc.id, ...storeDoc.data() } as Store;
+            set({ activeStore });
+            try {
+              localStorage.setItem('fmk_cached_store', JSON.stringify(activeStore));
+            } catch {}
           }
         }
       }
     } catch (error: any) {
-      console.error("Error fetching user data:", error.message || error);
+      console.warn("Aviso ao recarregar perfil:", error.message || error);
     }
   },
 
   initialize: () => {
-    if (authListener) return; // Evita múltiplos listeners
+    if (authListener) return; // Evita duplicação de listeners
     
+    // Trava de segurança anti-loading infinito:
+    // Se o Firebase demorar mais de 3.5 segundos, descongela o estado do app
+    if (safetyTimeout) clearTimeout(safetyTimeout);
+    safetyTimeout = setTimeout(() => {
+      const current = get();
+      if (!current.initialized || current.loading) {
+        console.warn("Aviso: Inicialização de autenticação atingiu timeout seguro.");
+        set({ loading: false, initialized: true });
+      }
+    }, 3500);
+
     authListener = onAuthStateChanged(auth, (firebaseUser) => {
-      // Limpa listeners anteriores
+      // Limpa listeners e timeouts anteriores
+      if (safetyTimeout) clearTimeout(safetyTimeout);
       if (profileListener) {
         profileListener();
         profileListener = null;
@@ -66,32 +102,54 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       if (firebaseUser) {
-        set({ user: firebaseUser, loading: true });
+        set({ user: firebaseUser });
 
-        // Inicia listener em tempo real para o perfil do usuário
+        // Listener de perfil em tempo real com timeout de segurança
         const userRef = doc(db, 'users', firebaseUser.uid);
+        
+        let profileTimeout = setTimeout(() => {
+          // Se perfil demorar a responder, libera o loading
+          set({ loading: false, initialized: true });
+        }, 2500);
+
         profileListener = onSnapshot(userRef, async (profileSnap) => {
+          clearTimeout(profileTimeout);
+
           if (profileSnap.exists()) {
             const profile = profileSnap.data() as UserProfile;
             set({ profile });
+            try {
+              localStorage.setItem('fmk_cached_profile', JSON.stringify(profile));
+            } catch {}
 
-            // Se o usuário possui lojas cadastradas, escuta a loja principal em tempo real
+            // Se o usuário possui lojas cadastradas, escuta a loja principal
             if (profile.stores && profile.stores.length > 0) {
               const storeId = profile.stores[0];
               
               if (storeListener) storeListener();
+              
+              let storeTimeout = setTimeout(() => {
+                set({ loading: false, initialized: true });
+              }, 2000);
+
               storeListener = onSnapshot(doc(db, 'stores', storeId), (storeSnap) => {
+                clearTimeout(storeTimeout);
                 if (storeSnap.exists()) {
+                  const activeStore = { id: storeSnap.id, ...storeSnap.data() } as Store;
                   set({ 
-                    activeStore: { id: storeSnap.id, ...storeSnap.data() } as Store,
+                    activeStore,
                     loading: false, 
                     initialized: true 
                   });
+                  try {
+                    localStorage.setItem('fmk_cached_store', JSON.stringify(activeStore));
+                  } catch {}
                 } else {
                   set({ loading: false, initialized: true });
                 }
               }, (err) => {
-                console.error("Store snapshot error:", err);
+                clearTimeout(storeTimeout);
+                console.warn("Aviso store snapshot:", err);
                 set({ loading: false, initialized: true });
               });
             } else {
@@ -102,10 +160,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             set({ loading: false, initialized: true });
           }
         }, (err) => {
-          console.error("Profile snapshot error:", err);
+          clearTimeout(profileTimeout);
+          console.warn("Aviso profile snapshot:", err);
           set({ loading: false, initialized: true });
         });
       } else {
+        // Usuário deslogado
         set({ 
           user: null, 
           profile: null, 
@@ -113,11 +173,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           loading: false, 
           initialized: true 
         });
+        try {
+          localStorage.removeItem('fmk_cached_profile');
+          localStorage.removeItem('fmk_cached_store');
+        } catch {}
       }
     });
   },
   
-  setActiveStore: (store) => set({ activeStore: store }),
+  setActiveStore: (store) => {
+    set({ activeStore: store });
+    try {
+      if (store) {
+        localStorage.setItem('fmk_cached_store', JSON.stringify(store));
+      } else {
+        localStorage.removeItem('fmk_cached_store');
+      }
+    } catch {}
+  },
   
   signOut: async () => {
     if (profileListener) {
@@ -128,7 +201,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       storeListener();
       storeListener = null;
     }
+    try {
+      localStorage.removeItem('fmk_cached_profile');
+      localStorage.removeItem('fmk_cached_store');
+    } catch {}
     await firebaseSignOut(auth);
-    set({ user: null, profile: null, activeStore: null });
+    set({ user: null, profile: null, activeStore: null, loading: false, initialized: true });
   }
 }));
