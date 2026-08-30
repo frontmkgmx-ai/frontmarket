@@ -21,11 +21,7 @@ export async function onRequestPost(context) {
       const parsed = existing ? JSON.parse(existing) : {};
       await context.env.DIDIT_EVENTS.put(
         `user:${vendor_data}:status`,
-        JSON.stringify({
-          ...parsed,
-          document_data: data?.decision?.kyc?.document_data,
-          updated_at: timestamp
-        })
+        JSON.stringify({ ...parsed, document_data: data?.decision?.kyc?.document_data, updated_at: timestamp })
       );
     }
 
@@ -89,7 +85,7 @@ export async function onRequestGet(context) {
     });
   }
 
-  return new Response(JSON.stringify({ error: 'Provide vendor_data or session_id as query param' }), {
+  return new Response(JSON.stringify({ error: 'Provide vendor_data or session_id' }), {
     status: 400,
     headers: { 'Content-Type': 'application/json' }
   });
