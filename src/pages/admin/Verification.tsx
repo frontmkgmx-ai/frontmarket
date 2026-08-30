@@ -112,19 +112,41 @@ export function Verification() {
       if (!user) return;
       const token = await user.getIdToken();
       
-      const res = await fetch('/api/user/start-kyc', {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/api/user/start-kyc`, {
         method: 'POST',
         headers: {
+          'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
-        }
+        },
+        body: JSON.stringify({ uid: user.uid })
       });
       
       if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || 'Erro ao iniciar verificação');
+        let errorMsg = `Erro ${res.status} ao iniciar verificação`;
+        try {
+          const errText = await res.text();
+          if (errText) {
+            try {
+              const errData = JSON.parse(errText);
+              errorMsg = errData.error || errorMsg;
+            } catch (e) {
+              errorMsg = errText;
+            }
+          }
+        } catch (e) {
+          // Fallback message
+        }
+        throw new Error(errorMsg);
       }
       
-      const data = await res.json();
+      const resText = await res.text();
+      let data;
+      try {
+        data = JSON.parse(resText);
+      } catch (e) {
+        throw new Error(`Resposta inválida do servidor: ${resText.substring(0, 100)}`);
+      }
       
       // Save the new session to Firestore directly from the client
       if (data.session_id) {

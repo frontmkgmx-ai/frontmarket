@@ -21,6 +21,9 @@ export interface StoreSettings {
   themeColor: string;
   theme?: string; // name of the selected theme
   logoUrl?: string;
+  headerStyle?: string;
+  footerStyle?: string;
+  loadingStyle?: string;
   contactEmail?: string;
   supportPhone?: string;
 }
