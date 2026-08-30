@@ -18,6 +18,6 @@ const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true
+  experimentalAutoDetectLongPolling: true
 }, import.meta.env.VITE_FIREBASE_DATABASE_ID || "ai-studio-f452ed5b-7861-4365-a109-42e00eede901");
 export const storage = getStorage(app);

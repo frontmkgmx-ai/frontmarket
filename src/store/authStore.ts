@@ -11,7 +11,7 @@ interface AuthState {
   loading: boolean;
   initialized: boolean;
   initialize: () => void;
-  reloadProfile: () => Promise<void>;
+  reloadProfile: (retries?: number) => Promise<void>;
   setActiveStore: (store: Store | null) => void;
   signOut: () => Promise<void>;
 }
@@ -25,28 +25,36 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   loading: true,
   initialized: false,
   
-  reloadProfile: async () => {
+  reloadProfile: async (retries = 3) => {
     const { user } = get();
     if (!user) return;
     
-    try {
-      const profileDoc = await getDoc(doc(db, 'users', user.uid));
-      let activeStore = null;
+    for (let i = 0; i < retries; i++) {
+      try {
+        const profileDoc = await getDoc(doc(db, 'users', user.uid));
+        let activeStore = null;
 
-      if (profileDoc.exists()) {
-        const profile = profileDoc.data() as UserProfile;
-        
-        if (profile.stores && profile.stores.length > 0) {
-          const storeDoc = await getDoc(doc(db, 'stores', profile.stores[0]));
-          if (storeDoc.exists()) {
-            activeStore = { id: storeDoc.id, ...storeDoc.data() } as Store;
+        if (profileDoc.exists()) {
+          const profile = profileDoc.data() as UserProfile;
+          
+          if (profile.stores && profile.stores.length > 0) {
+            const storeDoc = await getDoc(doc(db, 'stores', profile.stores[0]));
+            if (storeDoc.exists()) {
+              activeStore = { id: storeDoc.id, ...storeDoc.data() } as Store;
+            }
           }
+          
+          set({ profile, activeStore });
         }
-        
-        set({ profile, activeStore });
+        return; // Success, exit retry loop
+      } catch (error: any) {
+        if (i === retries - 1) {
+          console.error("Error fetching user data:", error.message || error);
+        } else {
+          // Wait before retrying (exponential backoff)
+          await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+        }
       }
-    } catch (error) {
-      console.error("Error fetching user data:", error);
     }
   },
 
