@@ -7,7 +7,8 @@ import {
   ExternalLink,
   CheckCircle2,
   XCircle,
-  Clock
+  Clock,
+  ArrowRight
 } from 'lucide-react';
 import { auth, db } from '../../firebase/config';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -67,6 +68,16 @@ export function Verification() {
     try {
       setStarting(true);
       setError(null);
+      
+      // Pedir permissão de câmera explicitamente antes de iniciar
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        // Opcional: parar as tracks imediatamente após conseguir a permissão para não deixar a luz da câmera ligada
+        stream.getTracks().forEach(track => track.stop());
+      } catch (camErr) {
+        throw new Error('É necessário permitir o acesso à câmera para realizar a verificação facial. Verifique as permissões do seu navegador.');
+      }
+
       const user = auth.currentUser;
       if (!user) return;
       const token = await user.getIdToken();
@@ -270,23 +281,46 @@ export function Verification() {
         )}
 
         {/* State: In Progress / Review */}
+        {/* State: Pending or Review */}
         {(isPending || isReview) && (
           <div className="p-8 text-center">
             <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <Clock className="w-8 h-8 text-blue-600" />
             </div>
             <h2 className="text-xl font-bold text-slate-800 mb-2">
-              {isReview ? 'Em Análise Manual' : 'Verificação em Andamento'}
+              {isReview ? 'Em Análise Manual' : 'Verificação Incompleta ou em Andamento'}
             </h2>
             <p className="text-slate-600 max-w-md mx-auto mb-6">
               {isReview 
                 ? 'Sua documentação está passando por uma revisão de segurança final por nossa equipe. Você será notificado em breve.'
-                : 'Identificamos que você iniciou o processo. Conclua na janela de segurança enviada ou aguarde a atualização de status nesta tela (atualização automática).'}
+                : 'Você iniciou o processo de verificação. Caso tenha saído sem concluir (ex: enviou os documentos mas não finalizou a etapa facial), clique no botão abaixo para continuar de onde parou.'}
             </p>
             
-            <div className="inline-flex items-center justify-center px-4 py-2 bg-slate-100 rounded-lg text-sm font-semibold text-slate-700">
-              <Loader2 className="w-4 h-4 mr-2 animate-spin text-slate-500" />
-              Aguardando provedor KYC...
+            <div className="flex flex-col items-center justify-center gap-4">
+              <div className="inline-flex items-center justify-center px-4 py-2 bg-slate-100 rounded-lg text-sm font-semibold text-slate-700">
+                <Loader2 className="w-4 h-4 mr-2 animate-spin text-slate-500" />
+                Aguardando provedor KYC...
+              </div>
+
+              {isPending && (
+                <button
+                  onClick={startVerification}
+                  disabled={starting}
+                  className="mt-2 inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-all shadow-sm hover:shadow active:scale-95 disabled:opacity-70 disabled:pointer-events-none"
+                >
+                  {starting ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Preparando ambiente...
+                    </>
+                  ) : (
+                    <>
+                      Continuar Verificação
+                      <ArrowRight className="w-5 h-5" />
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         )}
