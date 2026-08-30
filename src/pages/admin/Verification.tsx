@@ -114,6 +114,23 @@ export function Verification() {
     }
   };
 
+  const resetVerification = async () => {
+    try {
+      setLoading(true);
+      const user = auth.currentUser;
+      if (!user) return;
+      await setDoc(doc(db, 'users', user.uid), {
+        kyc_status: 'not_started',
+        kyc_session_id: null
+      }, { merge: true });
+      setKycStatus({ kyc_status: 'not_started' } as any);
+    } catch (err: any) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -303,23 +320,32 @@ export function Verification() {
               </div>
 
               {isPending && (
-                <button
-                  onClick={startVerification}
-                  disabled={starting}
-                  className="mt-2 inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-all shadow-sm hover:shadow active:scale-95 disabled:opacity-70 disabled:pointer-events-none"
-                >
-                  {starting ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Preparando ambiente...
-                    </>
-                  ) : (
-                    <>
-                      Continuar Verificação
-                      <ArrowRight className="w-5 h-5" />
-                    </>
-                  )}
-                </button>
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full mt-2">
+                  <button
+                    onClick={startVerification}
+                    disabled={starting}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-all shadow-sm hover:shadow active:scale-95 disabled:opacity-70 disabled:pointer-events-none"
+                  >
+                    {starting ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Preparando ambiente...
+                      </>
+                    ) : (
+                      <>
+                        Continuar Verificação
+                        <ArrowRight className="w-5 h-5" />
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={resetVerification}
+                    disabled={starting}
+                    className="w-full sm:w-auto inline-flex items-center justify-center px-6 py-3 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-semibold border border-slate-200 transition-all hover:shadow-sm active:scale-95 disabled:opacity-70 disabled:pointer-events-none"
+                  >
+                    Cancelar e Recomeçar
+                  </button>
+                </div>
               )}
             </div>
           </div>
