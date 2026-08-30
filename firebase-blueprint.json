@@ -21,6 +21,7 @@
         "name": { "type": "string" },
         "slug": { "type": "string" },
         "ownerId": { "type": "string" },
+        "settings": { "type": "object" },
         "createdAt": { "type": "string" }
       },
       "required": ["name", "slug", "ownerId"]
@@ -32,26 +33,111 @@
       "properties": {
         "name": { "type": "string" },
         "slug": { "type": "string" },
+        "description": { "type": "string" },
         "price": { "type": "number" },
+        "promotionalPrice": { "type": "number" },
+        "sku": { "type": "string" },
+        "categoryId": { "type": "string" },
         "stock": { "type": "number" },
         "active": { "type": "boolean" },
-        "storeId": { "type": "string" }
+        "isDigital": { "type": "boolean" },
+        "images": { "type": "array" },
+        "createdAt": { "type": "string" }
       },
       "required": ["name", "price", "active"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Categoria de produtos da loja",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "description": { "type": "string" },
+        "active": { "type": "boolean" },
+        "order": { "type": "number" }
+      },
+      "required": ["name", "slug"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Pedido de compra realizado",
+      "type": "object",
+      "properties": {
+        "storeId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "items": { "type": "array" },
+        "subtotal": { "type": "number" },
+        "shipping": { "type": "number" },
+        "discount": { "type": "number" },
+        "total": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "processing", "shipped", "delivered", "cancelled", "refunded"] },
+        "customer": { "type": "object" },
+        "shippingAddress": { "type": "object" },
+        "paymentMethod": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["storeId", "total", "status"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Cliente registrado da loja",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "totalOrders": { "type": "number" },
+        "totalSpent": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["name", "email"]
+    },
+    "Coupon": {
+      "title": "Coupon",
+      "description": "Cupom de desconto promocional",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "discountType": { "type": "string", "enum": ["percentage", "fixed"] },
+        "value": { "type": "number" },
+        "minOrderValue": { "type": "number" },
+        "usageLimit": { "type": "number" },
+        "timesUsed": { "type": "number" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["code", "discountType", "value", "active"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": "UserProfile",
-      "description": "Perfis de usuários"
+      "description": "Perfis de usuários do sistema"
     },
     "/stores/{storeId}": {
       "schema": "Store",
-      "description": "Coleção de lojas"
+      "description": "Coleção de lojas cadastradas"
+    },
+    "/stores/{storeId}/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Categorias de produtos da loja"
     },
     "/stores/{storeId}/products/{productId}": {
       "schema": "Product",
-      "description": "Produtos da loja"
+      "description": "Produtos do catálogo da loja"
+    },
+    "/stores/{storeId}/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Pedidos de venda recebidos"
+    },
+    "/stores/{storeId}/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Base de clientes da loja"
+    },
+    "/stores/{storeId}/coupons/{couponId}": {
+      "schema": "Coupon",
+      "description": "Cupons de desconto da loja"
     }
   }
 }

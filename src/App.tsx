@@ -15,6 +15,10 @@ import { Dashboard } from './pages/admin/Dashboard';
 import { Categories } from './pages/admin/Categories';
 import { Products } from './pages/admin/Products';
 import { ProductForm } from './pages/admin/ProductForm';
+import { Orders } from './pages/admin/Orders';
+import { Customers } from './pages/admin/Customers';
+import { Payments } from './pages/admin/Payments';
+import { Settings } from './pages/admin/Settings';
 import { HomeStore } from './pages/storefront/HomeStore';
 import { ProductDetail } from './pages/storefront/ProductDetail';
 import { Cart } from './pages/storefront/Cart';
@@ -53,10 +57,10 @@ export default function App() {
                 <Route path="products/new" element={<ProductForm />} />
                 <Route path="products/:id/edit" element={<ProductForm />} />
                 <Route path="categories" element={<Categories />} />
-                <Route path="orders" element={<div>Orders</div>} />
-                <Route path="customers" element={<div>Customers</div>} />
-                <Route path="payments" element={<div>Payments</div>} />
-                <Route path="settings" element={<div>Settings</div>} />
+                <Route path="orders" element={<Orders />} />
+                <Route path="customers" element={<Customers />} />
+                <Route path="payments" element={<Payments />} />
+                <Route path="settings" element={<Settings />} />
               </Route>
             </Route>
           </Route>
