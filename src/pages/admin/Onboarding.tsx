@@ -129,7 +129,7 @@ export function Onboarding() {
           }).catch(() => {}) // Não bloqueia se houver atraso na subcoleção
         ]),
         5000,
-        null,
+        undefined, // <- Mudado para undefined para que lance o erro e não engula
         'Não foi possível conectar ao servidor para gravar a loja.'
       );
 

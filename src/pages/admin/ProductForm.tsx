@@ -7,6 +7,7 @@ import { useAuthStore } from '../../store/authStore';
 import { Category } from '../../types';
 import { FastCache } from '../../lib/cache';
 import { generateSlug } from '../../lib/utils';
+import { safeWrite } from '../../lib/asyncGuard';
 import { ArrowLeft, Upload, X } from 'lucide-react';
 import { Link } from 'react-router';
 
@@ -120,12 +121,9 @@ export function ProductForm() {
             createdAt: serverTimestamp()
           });
 
-      // Aguardamos no máximo 2 segundos para dar tempo do cache local registrar a alteração,
-      // mas se o servidor estiver lento, liberamos a interface imediatamente após 2s.
-      await Promise.race([
-        savePromise,
-        new Promise(resolve => setTimeout(resolve, 2000))
-      ]);
+      // Usa safeWrite para não travar a interface se houver lentidão na rede,
+      // mas lança erro imediato se houver problema de permissão
+      await safeWrite(savePromise, 2000);
       
       // Invalida o cache para garantir que a vitrine e painel busquem dados frescos
       FastCache.invalidate(`products_${activeStore.id}`);

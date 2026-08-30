@@ -6,6 +6,7 @@ import { Category } from '../../types';
 import { generateSlug } from '../../lib/utils';
 import { Edit2, Trash2, Plus, X, Sparkles, Folder } from 'lucide-react';
 import { FastCache } from '../../lib/cache';
+import { safeWrite } from '../../lib/asyncGuard';
 
 export function Categories() {
   const { activeStore } = useAuthStore();
@@ -76,7 +77,7 @@ export function Categories() {
   const handleDelete = async (id: string) => {
     if (!activeStore || !window.confirm('Tem certeza que deseja excluir esta categoria?')) return;
     try {
-      await deleteDoc(doc(db, 'stores', activeStore.id, 'categories', id));
+      await safeWrite(deleteDoc(doc(db, 'stores', activeStore.id, 'categories', id)));
       if (cacheKey) FastCache.invalidate(cacheKey);
     } catch (err) {
       console.error(err);
@@ -99,14 +100,14 @@ export function Categories() {
         updatedAt: serverTimestamp()
       };
 
-      if (editingCategory) {
-        await updateDoc(doc(db, 'stores', activeStore.id, 'categories', editingCategory.id), categoryData);
-      } else {
-        await addDoc(collection(db, 'stores', activeStore.id, 'categories'), {
-          ...categoryData,
-          createdAt: serverTimestamp()
-        });
-      }
+      const savePromise = editingCategory 
+        ? updateDoc(doc(db, 'stores', activeStore.id, 'categories', editingCategory.id), categoryData)
+        : addDoc(collection(db, 'stores', activeStore.id, 'categories'), {
+            ...categoryData,
+            createdAt: serverTimestamp()
+          });
+
+      await safeWrite(savePromise);
       
       if (cacheKey) FastCache.invalidate(cacheKey);
       setIsModalOpen(false);

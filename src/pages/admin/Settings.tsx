@@ -17,7 +17,7 @@ import {
   RefreshCw,
   Globe
 } from 'lucide-react';
-import { withTimeout } from '../../lib/asyncGuard';
+import { withTimeout, safeWrite } from '../../lib/asyncGuard';
 
 export function Settings() {
   const { activeStore, setActiveStore } = useAuthStore();
@@ -138,7 +138,7 @@ export function Settings() {
         }
       };
 
-      await updateDoc(doc(db, 'stores', activeStore.id), updatedData);
+      await safeWrite(updateDoc(doc(db, 'stores', activeStore.id), updatedData));
       setActiveStore({ ...activeStore, ...updatedData });
 
       setSavedSuccess(true);
