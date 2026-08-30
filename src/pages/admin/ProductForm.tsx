@@ -5,6 +5,7 @@ import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../firebase/config';
 import { useAuthStore } from '../../store/authStore';
 import { Category } from '../../types';
+import { FastCache } from '../../lib/cache';
 import { generateSlug } from '../../lib/utils';
 import { ArrowLeft, Upload, X } from 'lucide-react';
 import { Link } from 'react-router';
@@ -102,7 +103,7 @@ export function ProductForm() {
         description,
         price: parseFloat(price) || 0,
         sku,
-        categoryId,
+        categoryId: categoryId || 'todos',
         stock: parseInt(stock, 10) || 0,
         active,
         isDigital,
@@ -111,18 +112,29 @@ export function ProductForm() {
         updatedAt: serverTimestamp()
       };
 
-      if (isEditing && id) {
-        await updateDoc(doc(db, 'stores', activeStore.id, 'products', id), productData);
-      } else {
-        await addDoc(collection(db, 'stores', activeStore.id, 'products'), {
-          ...productData,
-          createdAt: serverTimestamp()
-        });
-      }
+      // Inicia a gravação no Firestore, mas não bloqueia a interface (Atualização Otimista)
+      const savePromise = isEditing && id
+        ? updateDoc(doc(db, 'stores', activeStore.id, 'products', id), productData)
+        : addDoc(collection(db, 'stores', activeStore.id, 'products'), {
+            ...productData,
+            createdAt: serverTimestamp()
+          });
+
+      // Aguardamos no máximo 2 segundos para dar tempo do cache local registrar a alteração,
+      // mas se o servidor estiver lento, liberamos a interface imediatamente após 2s.
+      await Promise.race([
+        savePromise,
+        new Promise(resolve => setTimeout(resolve, 2000))
+      ]);
+      
+      // Invalida o cache para garantir que a vitrine e painel busquem dados frescos
+      FastCache.invalidate(`products_${activeStore.id}`);
+      FastCache.invalidate(`admin_products_${activeStore.id}`);
+
       navigate('/admin/products');
     } catch (err) {
       console.error(err);
-      alert('Erro ao salvar produto');
+      alert('Erro ao salvar produto. Verifique sua conexão.');
     } finally {
       setSubmitting(false);
     }
