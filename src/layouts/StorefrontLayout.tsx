@@ -33,8 +33,33 @@ export function StorefrontLayout() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
+      <div className="min-h-screen flex flex-col bg-white">
+        <header className="border-b py-4 px-6 sticky top-0 bg-white z-10 shadow-sm">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div className="h-8 w-32 bg-gray-200 rounded animate-pulse"></div>
+            <div className="flex items-center space-x-6">
+              <div className="h-5 w-16 bg-gray-200 rounded animate-pulse hidden sm:block"></div>
+              <div className="h-5 w-16 bg-gray-200 rounded animate-pulse"></div>
+              <div className="h-8 w-8 bg-gray-200 rounded-full animate-pulse"></div>
+            </div>
+          </div>
+        </header>
+        
+        <main className="flex-grow w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="animate-pulse space-y-8">
+            <div className="h-48 bg-gray-100 rounded-2xl w-full"></div>
+            <div className="h-8 bg-gray-200 rounded w-48 mb-8"></div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[...Array(8)].map((_, i) => (
+                <div key={i} className="space-y-4">
+                  <div className="aspect-w-4 aspect-h-3 bg-gray-200 rounded-xl h-48"></div>
+                  <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                  <div className="h-5 bg-gray-200 rounded w-1/2"></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </main>
       </div>
     );
   }
