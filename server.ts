@@ -97,9 +97,8 @@ async function startServer() {
   const PORT = 3000;
 
   // Use JSON parser for all routes EXCEPT the webhook which needs raw body for signature verification
-  // Actually, we can use express.json() for everything except webhook
   app.use('/api', (req, res, next) => {
-    if (req.path === '/webhook/didit') {
+    if (req.path === '/webhook/didit' || req.path === '/webhooks/didit') {
       next(); // skip standard body parsing for webhook
     } else {
       express.json()(req, res, next);
@@ -188,133 +187,333 @@ async function startServer() {
     }
   });
 
-  // Webhook body parser using express.raw
-  app.post('/api/webhook/didit', express.raw({ type: 'application/json' }), async (req, res) => {
-    try {
-      const raw = req.body.toString();
-      const sig = (req.headers['x-signature-v2'] || '') as string;
-      const tsStr = req.headers['x-timestamp'] as string;
-      const ts = Number(tsStr);
+  // Helper for timing-safe signature comparison
+  function safeCompareHex(expectedHex: string, receivedHex: string): boolean {
+    if (!expectedHex || !receivedHex) return false;
+    const expectedBuf = Buffer.from(expectedHex.toLowerCase(), 'utf8');
+    const receivedBuf = Buffer.from(receivedHex.toLowerCase(), 'utf8');
+    if (expectedBuf.length !== receivedBuf.length) return false;
+    return crypto.timingSafeEqual(expectedBuf, receivedBuf);
+  }
 
-      // 1. Freshness (replay protection) - reject if older/newer than 300s
-      if (!ts || Math.abs(Date.now() / 1000 - ts) > 300) {
-        return res.status(401).json({ error: 'stale' });
-      }
+  // Deep search helper for document number / CPF in Didit V3 objects
+  const extractDocumentNumber = (obj: any): string | null => {
+    if (!obj || typeof obj !== 'object') return null;
+    if (typeof obj.document_number === 'string' && obj.document_number.trim()) return obj.document_number.trim();
+    if (typeof obj.personal_number === 'string' && obj.personal_number.trim()) return obj.personal_number.trim();
+    if (typeof obj.id_number === 'string' && obj.id_number.trim()) return obj.id_number.trim();
+    if (typeof obj.tax_id === 'string' && obj.tax_id.trim()) return obj.tax_id.trim();
+    if (typeof obj.cpf === 'string' && obj.cpf.trim()) return obj.cpf.trim();
+    for (const key of Object.keys(obj)) {
+      const res = extractDocumentNumber(obj[key]);
+      if (res) return res;
+    }
+    return null;
+  };
 
-      const secret = process.env.DIDIT_WEBHOOK_SECRET;
-      let parsed: any = {};
-      try {
-        parsed = JSON.parse(raw);
-      } catch (e) {
-        return res.status(400).json({ error: 'invalid json' });
-      }
-
-      if (secret) {
-        // 2. Canonicalise
-        const canonical = JSON.stringify(sortKeys(shortenFloats(parsed)));
-        
-        // 3. Constant-time HMAC-SHA256
-        const expected = crypto
-          .createHmac('sha256', secret)
-          .update(canonical, 'utf8')
-          .digest('hex');
-          
-        if (
-          sig.length !== expected.length ||
-          !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(sig))
-        ) {
-          return res.status(401).json({ error: 'bad sig' });
+  // Helper to extract verified name from OCR/id_verifications
+  const extractVerifiedName = (payload: any): string | null => {
+    const decision = payload.decision || payload;
+    // 1. Check direct decision features
+    if (decision.features?.ocr?.first_name) {
+      return `${decision.features.ocr.first_name} ${decision.features.ocr.last_name || ''}`.trim();
+    }
+    // 2. Check id_verifications array (V3 schema)
+    if (Array.isArray(decision.id_verifications) && decision.id_verifications.length > 0) {
+      for (const item of decision.id_verifications) {
+        if (item.features?.ocr?.first_name) {
+          return `${item.features.ocr.first_name} ${item.features.ocr.last_name || ''}`.trim();
         }
-      } else {
-        console.log('[INFO] DIDIT_WEBHOOK_SECRET not set, skipping signature verification');
+        if (item.first_name) {
+          return `${item.first_name} ${item.last_name || ''}`.trim();
+        }
+      }
+    }
+    return null;
+  };
+
+  // --- DIDIT WEBHOOK RECEIVER (V3 Real-Time Events) ---
+  const handleDiditWebhook = async (req: express.Request, res: express.Response) => {
+    const rawBuffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || '', 'utf8');
+    const rawStr = rawBuffer.toString('utf8');
+    
+    // Header signatures
+    const sigV2 = (req.headers['x-signature-v2'] || '') as string;
+    const sigRaw = (req.headers['x-signature'] || '') as string;
+    const sigSimple = (req.headers['x-signature-simple'] || '') as string;
+    const tsStr = (req.headers['x-timestamp'] || '') as string;
+    const ts = Number(tsStr);
+    const nowEpoch = Math.floor(Date.now() / 1000);
+
+    // 1. Validate timestamp freshness (within 5 minutes = 300 seconds)
+    if (!ts || isNaN(ts) || Math.abs(nowEpoch - ts) > 300) {
+      console.warn(`[DIDIT WEBHOOK] Stale or missing timestamp. Now: ${nowEpoch}, Header: ${tsStr}`);
+      return res.status(401).json({ error: 'stale_timestamp', message: 'Webhook timestamp is outside the 5-minute freshness window' });
+    }
+
+    // 2. Parse JSON payload
+    let payload: any = {};
+    try {
+      payload = JSON.parse(rawStr);
+    } catch (e) {
+      console.error('[DIDIT WEBHOOK] Invalid JSON body:', rawStr.slice(0, 200));
+      return res.status(400).json({ error: 'invalid_json', message: 'Malformed JSON payload' });
+    }
+
+    const secret = process.env.DIDIT_WEBHOOK_SECRET;
+
+    // 3. Verify HMAC-SHA256 signature using constant-time comparison
+    if (secret) {
+      let isVerified = false;
+      let usedMethod = '';
+
+      // Priority 1: X-Signature-V2 (over canonical sorted JSON)
+      if (sigV2) {
+        const canonical = JSON.stringify(sortKeys(shortenFloats(payload)));
+        const expectedV2 = crypto.createHmac('sha256', secret).update(canonical, 'utf8').digest('hex');
+        if (safeCompareHex(expectedV2, sigV2)) {
+          isVerified = true;
+          usedMethod = 'X-Signature-V2';
+        }
       }
 
-      // 4. Processar a decisão (V3 status)
-      const { status, vendor_data, session_id } = parsed;
-      const userId = vendor_data;
+      // Priority 2: X-Signature (over raw bytes)
+      if (!isVerified && sigRaw) {
+        const expectedRaw = crypto.createHmac('sha256', secret).update(rawBuffer).digest('hex');
+        if (safeCompareHex(expectedRaw, sigRaw)) {
+          isVerified = true;
+          usedMethod = 'X-Signature';
+        }
+      }
 
-      if (userId) {
-        const userRef = getFirestore().collection('users').doc(userId);
-        
-        // Deep search helper for document number
-        const findDocumentNumber = (obj: any): string | null => {
-          if (!obj || typeof obj !== 'object') return null;
-          if (obj.document_number) return obj.document_number;
-          if (obj.personal_number) return obj.personal_number;
-          for (const key of Object.keys(obj)) {
-            const res = findDocumentNumber(obj[key]);
-            if (res) return res;
-          }
-          return null;
-        };
+      // Priority 3: X-Signature-Simple ({timestamp}:{session_id}:{status}:{webhook_type})
+      if (!isVerified && sigSimple) {
+        const sessionIdVal = payload.session_id || payload.id || '';
+        const statusVal = payload.status || '';
+        const webhookTypeVal = payload.webhook_type || '';
+        const simpleString = `${ts}:${sessionIdVal}:${statusVal}:${webhookTypeVal}`;
+        const expectedSimple = crypto.createHmac('sha256', secret).update(simpleString, 'utf8').digest('hex');
+        if (safeCompareHex(expectedSimple, sigSimple)) {
+          isVerified = true;
+          usedMethod = 'X-Signature-Simple';
+        }
+      }
 
-        switch (status) {
-          case 'Approved': {
-            const documentNumber = findDocumentNumber(parsed);
-            let isDuplicate = false;
-            
+      if (!isVerified) {
+        console.error('[DIDIT WEBHOOK] Signature verification failed. Headers:', {
+          sigV2: sigV2 ? 'present' : 'missing',
+          sigRaw: sigRaw ? 'present' : 'missing',
+          sigSimple: sigSimple ? 'present' : 'missing',
+          timestamp: tsStr
+        });
+        return res.status(401).json({ error: 'invalid_signature', message: 'HMAC signature verification failed' });
+      } else {
+        console.log(`[DIDIT WEBHOOK] Verified successfully via ${usedMethod}`);
+      }
+    } else {
+      console.log('[DIDIT WEBHOOK] Notice: DIDIT_WEBHOOK_SECRET not configured, bypassing signature check');
+    }
+
+    // 4. Extract envelope details & ensure idempotency
+    const eventId = payload.event_id || `${payload.session_id || payload.id || 'evt'}_${payload.status || 'status'}_${payload.webhook_type || 'event'}_${payload.timestamp || ts}`;
+    const webhookType = (payload.webhook_type || 'status.updated').toLowerCase();
+    const status = payload.status || '';
+    const sessionId = payload.session_id || payload.id || null;
+    const vendorData = payload.vendor_data || payload.metadata?.userId || payload.metadata?.user_id || null;
+    const decision = payload.decision || {};
+
+    // 5. Return 200 OK immediately as required by Didit
+    res.status(200).json({ received: true, event_id: eventId });
+
+    // 6. Process database updates asynchronously and idempotently
+    try {
+      const db = getFirestore();
+      const eventDocRef = db.collection('kyc_webhook_events').doc(eventId);
+      const existingEvent = await eventDocRef.get();
+
+      if (existingEvent.exists) {
+        console.log(`[DIDIT WEBHOOK] Idempotent skip: Event ${eventId} was already processed.`);
+        return;
+      }
+
+      // Log event to Firestore
+      await eventDocRef.set({
+        event_id: eventId,
+        session_id: sessionId,
+        webhook_type: webhookType,
+        status: status,
+        vendor_data: vendorData,
+        application_id: payload.application_id || null,
+        workflow_id: payload.workflow_id || null,
+        created_at_epoch: payload.created_at || payload.timestamp || ts,
+        received_at: FieldValue.serverTimestamp(),
+        payload: payload
+      });
+
+      // Find user to update
+      let targetUserId = vendorData;
+      if (!targetUserId && sessionId) {
+        const userQuery = await db.collection('users').where('kyc_session_id', '==', sessionId).limit(1).get();
+        if (!userQuery.empty) {
+          targetUserId = userQuery.docs[0].id;
+        }
+      }
+
+      if (!targetUserId) {
+        console.log(`[DIDIT WEBHOOK] Event ${eventId} (${webhookType}) received for unlinked session ${sessionId}`);
+        return;
+      }
+
+      const userRef = db.collection('users').doc(targetUserId);
+
+      // Handle events by webhook_type
+      switch (webhookType) {
+        case 'status.updated':
+        case 'data.updated':
+        case 'user.status.updated':
+        case 'user.data.updated':
+        case 'business.status.updated':
+        case 'business.data.updated': {
+          const statusLower = status.toLowerCase();
+
+          if (status === 'Approved' || statusLower === 'approved') {
+            const documentNumber = extractDocumentNumber(payload);
+            const verifiedName = extractVerifiedName(payload);
+            let isDuplicateCpf = false;
+
             if (documentNumber) {
-              const snapshot = await getFirestore().collection('users').where('kyc_cpf', '==', documentNumber).get();
-              const existingUsers = snapshot.docs.filter(doc => doc.id !== userId && doc.data().kyc_status === 'approved');
-              if (existingUsers.length > 0) {
-                isDuplicate = true;
+              const duplicateCheck = await db.collection('users')
+                .where('kyc_cpf', '==', documentNumber)
+                .get();
+              
+              const existingVerified = duplicateCheck.docs.filter(
+                d => d.id !== targetUserId && (d.data().kyc_status === 'approved' || d.data().verified === true)
+              );
+
+              if (existingVerified.length > 0) {
+                isDuplicateCpf = true;
               }
             }
 
-            if (isDuplicate) {
-              await userRef.set({ 
+            if (isDuplicateCpf) {
+              await userRef.set({
+                verified: false,
+                verification_status: 'declined',
                 kyc_status: 'declined',
                 kyc_error: 'Este CPF já está em uso por outra conta verificada.',
-                kyc_declined_at: FieldValue.serverTimestamp()
+                kyc_declined_at: FieldValue.serverTimestamp(),
+                kyc_last_event_id: eventId
               }, { merge: true });
+              console.warn(`[DIDIT KYC] CPF duplication blocked for user ${targetUserId} (CPF: ${documentNumber})`);
             } else {
-              await userRef.set({ 
-                kyc_status: 'approved', 
-                kyc_session_id: session_id,
+              await userRef.set({
+                verified: true,
+                verification_status: 'approved',
+                kyc_status: 'approved',
+                kyc_session_id: sessionId,
                 ...(documentNumber && { kyc_cpf: documentNumber }),
-                kyc_approved_at: FieldValue.serverTimestamp()
+                ...(verifiedName && { verified_name: verifiedName }),
+                kyc_approved_at: FieldValue.serverTimestamp(),
+                kyc_error: null,
+                kyc_last_event_id: eventId,
+                kyc_decision: {
+                  status: status,
+                  verified_name: verifiedName,
+                  document_number: documentNumber,
+                  updated_at: new Date().toISOString()
+                }
               }, { merge: true });
+              console.log(`[DIDIT KYC] User ${targetUserId} verified and approved successfully.`);
             }
-            break;
-          }
-          case 'Declined':
-            await userRef.set({ 
+          } else if (status === 'Declined' || statusLower === 'declined') {
+            const warnings = decision.warnings || decision.reviews || [];
+            await userRef.set({
+              verified: false,
+              verification_status: 'declined',
               kyc_status: 'declined',
-              kyc_declined_at: FieldValue.serverTimestamp()
+              kyc_declined_at: FieldValue.serverTimestamp(),
+              kyc_warnings: warnings,
+              kyc_last_event_id: eventId
             }, { merge: true });
-            break;
-          case 'In Review':
-            await userRef.set({ kyc_status: 'review' }, { merge: true });
-            break;
-          case 'Resubmitted':
-          case 'Kyc Expired':
-            await userRef.set({ kyc_status: 'started' }, { merge: true });
-            break;
-          default:
-            // "Not Started", "In Progress", "Awaiting User", "Abandoned", "Expired"
-            break;
+            console.log(`[DIDIT KYC] User ${targetUserId} marked as Declined.`);
+          } else if (status === 'In Review' || statusLower === 'in review' || statusLower === 'in_review') {
+            await userRef.set({
+              verification_status: 'pending_review',
+              kyc_status: 'review',
+              kyc_last_event_id: eventId
+            }, { merge: true });
+          } else if (status === 'In Progress' || statusLower === 'in progress' || statusLower === 'in_progress') {
+            await userRef.set({
+              verification_status: 'in_progress',
+              kyc_status: 'in_progress',
+              kyc_last_event_id: eventId
+            }, { merge: true });
+          } else if (status === 'Resubmitted' || statusLower === 'resubmitted') {
+            await userRef.set({
+              verification_status: 'resubmitted',
+              kyc_status: 'started',
+              kyc_last_event_id: eventId
+            }, { merge: true });
+          } else if (status === 'Abandoned' || statusLower === 'abandoned') {
+            await userRef.set({
+              verification_status: 'abandoned',
+              kyc_status: 'abandoned',
+              kyc_last_event_id: eventId
+            }, { merge: true });
+          } else if (status === 'Expired' || status === 'KYC Expired' || statusLower.includes('expired')) {
+            await userRef.set({
+              verification_status: 'expired',
+              kyc_status: 'expired',
+              kyc_last_event_id: eventId
+            }, { merge: true });
+          } else if (status === 'Not Started' || statusLower === 'not_started' || statusLower === 'not started') {
+            await userRef.set({
+              verification_status: 'not_started',
+              kyc_status: 'not_started',
+              kyc_last_event_id: eventId
+            }, { merge: true });
+          }
+          break;
         }
-      }
 
-      // Save webhook event to a separate collection for logging
-      try {
-        await getFirestore().collection('kyc_webhook_events').add({
-          session_id: parsed.session_id || parsed.id,
-          status: parsed.status,
-          vendor_data: parsed.vendor_data,
-          payload: parsed,
-          received_at: FieldValue.serverTimestamp()
-        });
-      } catch (logErr) {
-        console.error('Error logging webhook event:', logErr);
-      }
+        case 'activity.created': {
+          // Log user timeline activity if present
+          if (targetUserId) {
+            await db.collection('users').doc(targetUserId).collection('kyc_activities').add({
+              event_id: eventId,
+              session_id: sessionId,
+              activity: payload.activity || payload,
+              created_at: FieldValue.serverTimestamp()
+            });
+          }
+          break;
+        }
 
-      res.status(200).json({ received: true });
-    } catch (error: any) {
-      console.error('Webhook processing error:', error);
-      res.status(500).json({ error: 'Internal Server Error' });
+        case 'transaction.created':
+        case 'transaction.status.updated': {
+          // Log transaction KYC review event
+          if (targetUserId) {
+            await db.collection('users').doc(targetUserId).collection('kyc_transactions').doc(payload.transaction_id || eventId).set({
+              event_id: eventId,
+              session_id: sessionId,
+              transaction: payload.transaction || payload,
+              updated_at: FieldValue.serverTimestamp()
+            }, { merge: true });
+          }
+          break;
+        }
+
+        default:
+          console.log(`[DIDIT WEBHOOK] Unhandled event family: ${webhookType}`);
+          break;
+      }
+    } catch (asyncErr) {
+      console.error('[DIDIT WEBHOOK] Error executing asynchronous updates:', asyncErr);
     }
-  });
+  };
+
+  // Bind Webhook receiver to both standard /api/webhooks/didit and /api/webhook/didit with express.raw
+  app.post(['/api/webhook/didit', '/api/webhooks/didit'], express.raw({ type: '*/*' }), handleDiditWebhook);
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
