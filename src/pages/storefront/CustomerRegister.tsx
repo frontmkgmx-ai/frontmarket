@@ -3,6 +3,7 @@ import { Link, useNavigate, useOutletContext } from 'react-router';
 import { Store, CustomerAddress } from '../../types';
 import { useCustomerAuthStore } from '../../store/customerAuthStore';
 import { maskCPF, maskPhone, maskCEP } from '../../lib/utils';
+import { validateIdentity } from '../../lib/identityValidators';
 import { 
   User, 
   Lock, 
@@ -28,6 +29,9 @@ export function CustomerRegister() {
   // Etapa atual: 1 = Credenciais de Acesso, 2 = Dados Pessoais & Endereço
   const [step, setStep] = useState<1 | 2>(1);
   const [error, setError] = useState('');
+  
+  const [cpfFeedback, setCpfFeedback] = useState<{valid: boolean; message: string} | null>(null);
+  const [validatingCpf, setValidatingCpf] = useState(false);
 
   // Etapa 1 - Acesso
   const [username, setUsername] = useState('');
@@ -128,6 +132,25 @@ export function CustomerRegister() {
   };
 
   // Concluir Registro Final (Etapa 2)
+  const validateCpfField = async () => {
+    const raw = cpf.replace(/\D/g, '');
+    if (raw.length !== 11) return;
+    
+    setValidatingCpf(true);
+    setCpfFeedback(null);
+    try {
+      const result = await validateIdentity(cpf, name);
+      setCpfFeedback({
+        valid: result.isValid,
+        message: result.message
+      });
+    } catch(e) {
+      setCpfFeedback({valid: false, message: 'Erro ao verificar CPF.'});
+    } finally {
+      setValidatingCpf(false);
+    }
+  };
+
   const handleFinalSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
@@ -138,14 +161,30 @@ export function CustomerRegister() {
     }
 
     const cleanCpf = cpf.replace(/\D/g, '');
-    if (cleanCpf.length < 11) {
+    if (cleanCpf.length !== 11) {
       setError('Por favor, informe um CPF válido.');
+      return;
+    }
+
+    if (cpfFeedback && !cpfFeedback.valid) {
+      setError('Verifique os avisos no seu documento antes de continuar.');
       return;
     }
 
     const cleanPhone = phone.replace(/\D/g, '');
     if (cleanPhone.length < 10) {
       setError('Por favor, informe seu telefone com DDD.');
+      return;
+    }
+
+    try {
+      const identityResult = await validateIdentity(cpf, name);
+      if (!identityResult.isValid) {
+        setError(identityResult.message);
+        return;
+      }
+    } catch (err: any) {
+      setError('Erro ao validar documento. Tente novamente.');
       return;
     }
 
@@ -341,15 +380,40 @@ export function CustomerRegister() {
                   <label className="block text-xs font-bold text-slate-700 mb-1">
                     CPF *
                   </label>
-                  <input
-                    type="text"
-                    required
-                    maxLength={14}
-                    value={cpf}
-                    onChange={(e) => setCpf(maskCPF(e.target.value))}
-                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono"
-                    placeholder="000.000.000-00"
-                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      maxLength={14}
+                      value={cpf}
+                      onChange={(e) => {
+                        setCpf(maskCPF(e.target.value));
+                        setCpfFeedback(null);
+                      }}
+                      onBlur={validateCpfField}
+                      className={`w-full px-3.5 py-2.5 bg-white border ${cpfFeedback ? (cpfFeedback.valid ? 'border-emerald-500' : 'border-red-500') : 'border-slate-200'} rounded-xl text-xs sm:text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono transition-colors`}
+                      placeholder="000.000.000-00"
+                    />
+                    {validatingCpf && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />
+                      </div>
+                    )}
+                    {cpfFeedback && !validatingCpf && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        {cpfFeedback.valid ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                        ) : (
+                          <AlertCircle className="w-4 h-4 text-red-500" />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {cpfFeedback && (
+                    <p className={`mt-1 text-[10px] ${cpfFeedback.valid ? 'text-emerald-500' : 'text-red-500'}`}>
+                      {cpfFeedback.message}
+                    </p>
+                  )}
                 </div>
 
                 <div>

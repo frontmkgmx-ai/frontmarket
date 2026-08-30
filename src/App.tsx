@@ -19,6 +19,7 @@ import { Orders } from './pages/admin/Orders';
 import { Customers } from './pages/admin/Customers';
 import { Payments } from './pages/admin/Payments';
 import { Settings } from './pages/admin/Settings';
+import { Verification } from './pages/admin/Verification';
 import { HomeStore } from './pages/storefront/HomeStore';
 import { ProductDetail } from './pages/storefront/ProductDetail';
 import { Cart } from './pages/storefront/Cart';
@@ -62,6 +63,7 @@ export default function App() {
                 <Route path="orders" element={<Orders />} />
                 <Route path="customers" element={<Customers />} />
                 <Route path="payments" element={<Payments />} />
+                <Route path="verification" element={<Verification />} />
                 <Route path="settings" element={<Settings />} />
               </Route>
             </Route>

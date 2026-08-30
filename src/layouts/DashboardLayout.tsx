@@ -12,8 +12,10 @@ import {
   X,
   ExternalLink,
   Store as StoreIcon,
-  Layers
+  Layers,
+  ShieldCheck
 } from 'lucide-react';
+
 import { useState } from 'react';
 
 export function DashboardLayout() {
@@ -34,6 +36,7 @@ export function DashboardLayout() {
     { name: 'Categorias', icon: Layers, path: '/admin/categories' },
     { name: 'Clientes', icon: Users, path: '/admin/customers' },
     { name: 'Pagamentos', icon: CreditCard, path: '/admin/payments' },
+    { name: 'Verificação', icon: ShieldCheck, path: '/admin/verification' },
     { name: 'Configurações', icon: Settings, path: '/admin/settings' },
   ];
 

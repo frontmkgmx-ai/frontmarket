@@ -26,10 +26,10 @@ let safetyTimeout: any = null;
 const getInitialCache = () => {
   try {
     const cachedProfile = localStorage.getItem('fmk_cached_profile');
-    const cachedStore = localStorage.getItem('fmk_cached_store');
+    // Removemos o cache da loja para evitar consultas a "lojas fantasmas" antes da verificação do servidor
     return {
       profile: cachedProfile ? JSON.parse(cachedProfile) : null,
-      activeStore: cachedStore ? JSON.parse(cachedStore) : null,
+      activeStore: null,
     };
   } catch {
     return { profile: null, activeStore: null };

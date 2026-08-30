@@ -7,10 +7,12 @@ import {
   QrCode, 
   FileText, 
   CheckCircle2, 
-  Save 
+  Save,
+  AlertCircle
 } from 'lucide-react';
 import { FastCache } from '../../lib/cache';
 import { withTimeout } from '../../lib/asyncGuard';
+import { validatePixKey } from '../../lib/validators';
 
 export function Payments() {
   const { activeStore } = useAuthStore();
@@ -77,9 +79,22 @@ export function Payments() {
     loadSettings();
   }, [activeStore, cacheKey]);
 
+  const [pixError, setPixError] = useState<string | null>(null);
+  const [pixSuccess, setPixSuccess] = useState<string | null>(null);
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeStore) return;
+    
+    setPixError(null);
+    if (pixEnabled && pixKey) {
+      const pixValidation = validatePixKey(pixKey);
+      if (!pixValidation.valid) {
+        setPixError('A chave Pix informada não é válida para o formato detectado.');
+        return;
+      }
+    }
+
     setSaving(true);
     setSavedSuccess(false);
 
@@ -196,13 +211,53 @@ export function Payments() {
               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
                 Chave PIX Cadastrada
               </label>
-              <input
-                type="text"
-                value={pixKey}
-                onChange={e => setPixKey(e.target.value)}
-                placeholder="Ex: 123.456.789-00 ou pix@sualoja.com"
-                className="w-full py-2 px-3 border border-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={pixKey}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setPixKey(val);
+                    setPixError(null);
+                    setPixSuccess(null);
+                    
+                    if (val) {
+                      const validation = validatePixKey(val);
+                      if (validation.valid && validation.type) {
+                        const typeMap: Record<string, string> = {
+                          'CPF': 'cpf',
+                          'CNPJ': 'cpf',
+                          'EMAIL': 'email',
+                          'PHONE': 'phone',
+                          'EVP': 'random'
+                        };
+                        setPixKeyType(typeMap[validation.type] || 'cpf');
+                        setPixSuccess(`Chave válida (${validation.type})`);
+                      } else {
+                        setPixError('Chave Pix inválida');
+                      }
+                    }
+                  }}
+                  placeholder="Ex: 123.456.789-00 ou pix@sualoja.com"
+                  className={`w-full py-2 px-3 border ${pixError ? 'border-red-500' : (pixSuccess ? 'border-emerald-500' : 'border-slate-200')} rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-colors`}
+                />
+                {pixError && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <AlertCircle className="w-4 h-4 text-red-500" />
+                  </div>
+                )}
+                {pixSuccess && !pixError && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                  </div>
+                )}
+              </div>
+              {pixError && (
+                <p className="mt-1 text-[10px] text-red-500">{pixError}</p>
+              )}
+              {pixSuccess && !pixError && (
+                <p className="mt-1 text-[10px] text-emerald-500">{pixSuccess}</p>
+              )}
             </div>
 
             <div>

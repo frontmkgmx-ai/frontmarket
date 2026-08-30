@@ -1,35 +1,103 @@
-import React, { useState, FormEvent } from 'react';
+import React, { useState, FormEvent, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../../firebase/config';
-import { Package } from 'lucide-react';
+import { Package, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { validateIdentity } from '../../lib/identityValidators';
+import { maskCPF } from '../../lib/utils';
+import { maskCNPJ } from '../../lib/validators';
 
 export function Register() {
+  const [document, setDocument] = useState('');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [validatingDoc, setValidatingDoc] = useState(false);
+  const [docFeedback, setDocFeedback] = useState<{valid: boolean; message: string} | null>(null);
   const navigate = useNavigate();
+
+  const handleDocumentChange = (value: string) => {
+    const numbersOnly = value.replace(/\D/g, '');
+    let masked = value;
+    if (numbersOnly.length <= 11) {
+      masked = maskCPF(value);
+    } else {
+      masked = maskCNPJ(value);
+    }
+    setDocument(masked);
+    setDocFeedback(null);
+  };
+
+  const validateDocField = async () => {
+    const raw = document.replace(/\D/g, '');
+    if (raw.length !== 11 && raw.length !== 14) {
+      return;
+    }
+    
+    setValidatingDoc(true);
+    setDocFeedback(null);
+    try {
+      const result = await validateIdentity(document, name);
+      setDocFeedback({
+        valid: result.isValid,
+        message: result.message
+      });
+      
+      if (result.isValid && result.data?.type === 'CNPJ') {
+        if (!name) {
+          setName(result.data.razaoSocial);
+        }
+      }
+    } catch (e: any) {
+      setDocFeedback({
+        valid: false,
+        message: 'Erro ao validar documento.'
+      });
+    } finally {
+      setValidatingDoc(false);
+    }
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (loading) return;
+    if (loading || validatingDoc) return;
+    
     setError('');
+    
+    const rawDoc = document.replace(/\D/g, '');
+    if (rawDoc.length !== 11 && rawDoc.length !== 14) {
+      setError('CPF ou CNPJ inválido.');
+      return;
+    }
+
+    if (docFeedback && !docFeedback.valid) {
+      setError('Corrija os erros no documento antes de prosseguir.');
+      return;
+    }
+    
     setLoading(true);
 
     try {
+      // Validar novamente antes de enviar
+      const result = await validateIdentity(document, name);
+      if (!result.isValid) {
+        throw new Error(result.message);
+      }
+
       // 1. Cria autenticação no Firebase
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-
       await updateProfile(user, { displayName: name });
 
       // 2. Grava perfil com setDoc
       await setDoc(doc(db, 'users', user.uid), {
         name,
         email,
+        document: rawDoc,
+        documentType: result.data?.type || (rawDoc.length === 11 ? 'CPF' : 'CNPJ'),
         role: 'merchant',
         stores: [],
         createdAt: serverTimestamp()
@@ -69,8 +137,45 @@ export function Register() {
           )}
           <div className="rounded-md space-y-4">
             <div>
+              <label className="block text-sm font-medium text-gray-300" htmlFor="document">
+                CPF ou CNPJ
+              </label>
+              <div className="relative mt-1">
+                <input
+                  id="document"
+                  name="document"
+                  type="text"
+                  required
+                  value={document}
+                  onChange={(e) => handleDocumentChange(e.target.value)}
+                  onBlur={validateDocField}
+                  className={`appearance-none relative block w-full px-3 py-2 bg-white/5 border ${docFeedback ? (docFeedback.valid ? 'border-emerald-500' : 'border-red-500') : 'border-white/20'} placeholder-gray-400 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 sm:text-sm backdrop-blur-sm`}
+                  placeholder="000.000.000-00 ou 00.000.000/0000-00"
+                />
+                {validatingDoc && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <Loader2 className="w-4 h-4 text-teal-400 animate-spin" />
+                  </div>
+                )}
+                {docFeedback && !validatingDoc && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    {docFeedback.valid ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-red-400" />
+                    )}
+                  </div>
+                )}
+              </div>
+              {docFeedback && (
+                <p className={`mt-1 text-xs ${docFeedback.valid ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {docFeedback.message}
+                </p>
+              )}
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-300" htmlFor="name">
-                Nome Completo
+                Nome Completo / Razão Social
               </label>
               <input
                 id="name"
@@ -80,7 +185,7 @@ export function Register() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="appearance-none relative block w-full px-3 py-2 bg-white/5 border border-white/20 placeholder-gray-400 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 sm:text-sm mt-1 backdrop-blur-sm"
-                placeholder="Seu Nome"
+                placeholder="Seu Nome ou Empresa"
               />
             </div>
             <div>

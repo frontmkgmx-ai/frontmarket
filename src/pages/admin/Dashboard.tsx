@@ -137,6 +137,26 @@ export function Dashboard() {
         )}
       </div>
 
+      <div className="bg-gradient-to-r from-teal-50 to-emerald-50 rounded-2xl border border-teal-100 p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row items-center gap-4 sm:gap-6 justify-between">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shrink-0 border border-teal-200 shadow-sm">
+            <Sparkles className="w-6 h-6 text-teal-600" />
+          </div>
+          <div>
+            <h3 className="font-bold text-teal-900">Segurança da Loja (KYC)</h3>
+            <p className="text-xs text-teal-700 mt-0.5">
+              Valide sua identidade via Didit para obter o selo de loja verificada e aumentar sua credibilidade.
+            </p>
+          </div>
+        </div>
+        <Link 
+          to="/admin/verification" 
+          className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-xl transition-colors shadow-sm whitespace-nowrap"
+        >
+          Verificar Agora
+        </Link>
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {statCards.map((stat) => (
           <div key={stat.name} className="bg-white rounded-2xl border border-slate-100 p-5 shadow-2xs hover:shadow-xs transition-shadow">
