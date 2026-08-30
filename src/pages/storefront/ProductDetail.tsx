@@ -59,6 +59,50 @@ export function ProductDetail() {
     loadProduct();
   }, [store?.id, productSlug]);
 
+  // Dinamicamente injeta e atualiza tags Open Graph e Twitter Card para compartilhamento social
+  useEffect(() => {
+    if (product) {
+      const originalTitle = document.title;
+      const storeName = store?.name || 'Vitrine';
+      const pageTitle = `${product.name} | ${storeName}`;
+      document.title = pageTitle;
+
+      const setMetaTag = (attrName: string, attrValue: string, content: string, isName = false) => {
+        const selector = `meta[${isName ? 'name' : 'property'}="${attrName}"]`;
+        let element = document.querySelector(selector);
+        if (!element) {
+          element = document.createElement('meta');
+          element.setAttribute(isName ? 'name' : 'property', attrName);
+          document.head.appendChild(element);
+        }
+        element.setAttribute('content', content);
+      };
+
+      const productImage = product.images?.[0] || '';
+      const productUrl = typeof window !== 'undefined' ? window.location.href : '';
+      const productDescription = product.description || `Compre ${product.name} por ${formatCurrency(product.price)} na ${storeName}.`;
+
+      setMetaTag('og:title', '', pageTitle);
+      setMetaTag('og:description', '', productDescription);
+      if (productImage) {
+        setMetaTag('og:image', '', productImage);
+      }
+      setMetaTag('og:url', '', productUrl);
+      setMetaTag('og:type', '', 'product');
+
+      setMetaTag('twitter:card', '', 'summary_large_image', true);
+      setMetaTag('twitter:title', '', pageTitle, true);
+      setMetaTag('twitter:description', '', productDescription, true);
+      if (productImage) {
+        setMetaTag('twitter:image', '', productImage, true);
+      }
+
+      return () => {
+        document.title = originalTitle;
+      };
+    }
+  }, [product, store]);
+
   const handleAddToCart = () => {
     if (product) {
       addItem(product);
