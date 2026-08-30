@@ -19,6 +19,7 @@ export interface Store {
 export interface StoreSettings {
   currency: string;
   themeColor: string;
+  theme?: string; // name of the selected theme
   logoUrl?: string;
   contactEmail?: string;
   supportPhone?: string;
@@ -46,6 +47,7 @@ export interface Product {
   sku: string;
   categoryId: string;
   images: string[];
+  videoUrl?: string; // YouTube or direct video URL
   stock: number;
   active: boolean;
   isDigital: boolean;

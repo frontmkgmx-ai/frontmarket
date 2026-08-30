@@ -41,7 +41,7 @@ export async function withTimeout<T>(
  * ele resolve a promise permitindo que a interface flua (Atualização Otimista).
  * Se a operação rejeitar imediatamente (ex: Permission Denied), ele lança o erro.
  */
-export async function safeWrite<T>(promise: Promise<T>, timeoutMs: number = 2000): Promise<void> {
+export async function safeWrite(promise: Promise<any>, timeoutMs: number = 2000): Promise<void> {
   let timeoutId: any;
   const timeoutPromise = new Promise<void>((resolve) => {
     timeoutId = setTimeout(() => {

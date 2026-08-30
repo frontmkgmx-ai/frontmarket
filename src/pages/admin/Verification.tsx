@@ -18,6 +18,7 @@ interface KycStatus {
   verified_name?: string;
   document_type?: string;
   face_match_score?: number;
+  kyc_error?: string;
 }
 
 export function Verification() {
@@ -32,39 +33,15 @@ export function Verification() {
       const user = auth.currentUser;
       if (!user) return;
       
-      // 1. Read the user's current KYC session from Firestore
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       const userData = userDoc.data();
       
-      if (!userData?.kyc_session_id) {
-        setKycStatus({ kyc_status: userData?.kyc_status || 'not_started' });
-        setLoading(false);
-        return;
-      }
+      setKycStatus({ 
+        kyc_status: userData?.kyc_status || 'not_started',
+        session_id: userData?.kyc_session_id,
+        kyc_error: userData?.kyc_error
+      } as any);
       
-      const token = await user.getIdToken();
-      
-      // 2. Fetch the real-time status from our backend proxy (Didit API)
-      const res = await fetch(`/api/user/kyc-status?session_id=${userData.kyc_session_id}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      if (res.ok) {
-        const data = await res.json();
-        
-        // 3. If there's an update (e.g. approved), update Firestore so it's persisted
-        if (data.kyc_status !== userData.kyc_status) {
-          await setDoc(doc(db, 'users', user.uid), {
-            kyc_status: data.kyc_status,
-            kyc_verified_name: data.verified_name || null,
-            kyc_document_type: data.document_type || null
-          }, { merge: true });
-        }
-        
-        setKycStatus(data);
-      }
     } catch (err: any) {
       console.error('Failed to fetch KYC status:', err);
     } finally {
@@ -77,7 +54,8 @@ export function Verification() {
     
     // Poll for status updates if it is in progress
     const interval = setInterval(() => {
-      if (kycStatus?.kyc_status === 'started' || kycStatus?.kyc_status === 'review') {
+      const statusLower = (kycStatus?.kyc_status || '').toLowerCase();
+      if (statusLower === 'started' || statusLower === 'in progress' || statusLower === 'awaiting user' || statusLower === 'review' || statusLower === 'in review') {
         fetchKycStatus();
       }
     }, 10000);
@@ -111,7 +89,7 @@ export function Verification() {
       if (data.session_id) {
         await setDoc(doc(db, 'users', user.uid), {
           kyc_session_id: data.session_id,
-          kyc_status: data.mock ? 'approved' : 'started' // se for mock flow, já marcamos aprovado
+          kyc_status: 'In Progress'
         }, { merge: true });
       }
       
@@ -133,11 +111,13 @@ export function Verification() {
     );
   }
 
-  const isApproved = kycStatus?.kyc_status === 'approved';
-  const isDeclined = kycStatus?.kyc_status === 'declined';
-  const isPending = kycStatus?.kyc_status === 'started';
-  const isReview = kycStatus?.kyc_status === 'review';
-  const isNotStarted = !kycStatus || kycStatus.kyc_status === 'not_started';
+  const statusLower = (kycStatus?.kyc_status || 'not_started').toLowerCase();
+
+  const isApproved = statusLower === 'approved';
+  const isDeclined = statusLower === 'declined';
+  const isReview = statusLower === 'review' || statusLower === 'in review';
+  const isPending = statusLower === 'started' || statusLower === 'in progress' || statusLower === 'awaiting user';
+  const isNotStarted = !isApproved && !isDeclined && !isReview && !isPending;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -208,7 +188,7 @@ export function Verification() {
                   <div>
                     <h3 className="text-sm font-bold text-red-900">Verificação Reprovada</h3>
                     <p className="text-xs text-red-700 mt-1">
-                      Não foi possível aprovar sua documentação na última tentativa. Certifique-se de usar fotos nítidas, em ambiente iluminado e um documento válido (RG ou CNH).
+                      {kycStatus?.kyc_error || 'Não foi possível aprovar sua documentação na última tentativa. Certifique-se de usar fotos nítidas, em ambiente iluminado e um documento válido (RG ou CNH).'}
                     </p>
                   </div>
                 </div>

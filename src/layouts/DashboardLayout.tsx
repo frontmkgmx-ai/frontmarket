@@ -13,7 +13,8 @@ import {
   ExternalLink,
   Store as StoreIcon,
   Layers,
-  ShieldCheck
+  ShieldCheck,
+  Palette
 } from 'lucide-react';
 
 import { useState } from 'react';
@@ -37,6 +38,7 @@ export function DashboardLayout() {
     { name: 'Clientes', icon: Users, path: '/admin/customers' },
     { name: 'Pagamentos', icon: CreditCard, path: '/admin/payments' },
     { name: 'Verificação', icon: ShieldCheck, path: '/admin/verification' },
+    { name: 'Personalização', icon: Palette, path: '/admin/personalization' },
     { name: 'Configurações', icon: Settings, path: '/admin/settings' },
   ];
 

@@ -9,9 +9,10 @@ import { useCartStore } from '../../store/cartStore';
 import { FastCache } from '../../lib/cache';
 import { withTimeout } from '../../lib/asyncGuard';
 import { SmartLoader } from '../../components/SmartLoader';
+import { ThemeConfig } from '../../lib/themes';
 
 export function ProductDetail() {
-  const { store } = useOutletContext<{ store: Store }>();
+  const { store, currentTheme } = useOutletContext<{ store: Store; currentTheme: ThemeConfig }>();
   const { productSlug } = useParams<{ productSlug: string }>();
   
   const cacheKey = store && productSlug ? `prod_${store.id}_${productSlug}` : '';
@@ -139,7 +140,7 @@ export function ProductDetail() {
         <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
           <button
             onClick={() => { setLoading(true); loadProduct(); }}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 bg-opacity-10 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             Tentar Novamente
@@ -161,7 +162,7 @@ export function ProductDetail() {
     <div className="max-w-7xl mx-auto py-4 sm:py-8 px-2 sm:px-6">
       <Link 
         to={`/${store.slug}`} 
-        className="inline-flex items-center text-xs sm:text-sm font-semibold text-slate-500 hover:text-slate-900 mb-6 transition-colors"
+        className="inline-flex items-center text-xs sm:text-sm font-semibold text-slate-500 hover:opacity-100 mb-6 transition-colors"
       >
         <ArrowLeft className="w-4 h-4 mr-1.5" />
         Voltar para a vitrine
@@ -170,7 +171,7 @@ export function ProductDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-start">
         {/* Imagem do Produto */}
         <div className="w-full">
-          <div className="aspect-square rounded-2xl sm:rounded-3xl overflow-hidden bg-slate-100 border border-slate-200/80 shadow-xs relative">
+          <div className="aspect-square rounded-2xl sm:rounded-3xl overflow-hidden bg-opacity-10 border border-slate-200/80 shadow-xs relative">
             {product.images && product.images.length > 0 ? (
               <img
                 src={product.images[0]}
@@ -178,7 +179,7 @@ export function ProductDetail() {
                 className="w-full h-full object-cover object-center"
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-slate-400 text-sm font-medium">
+              <div className="w-full h-full flex items-center justify-center opacity-60 text-sm font-medium">
                 Sem Imagem Cadastrada
               </div>
             )}
@@ -192,27 +193,54 @@ export function ProductDetail() {
 
         {/* Informações e Compra */}
         <div className="flex flex-col">
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 mb-2">
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight opacity-100 mb-2">
             {product.name}
           </h1>
           
           <div className="flex items-baseline gap-3 mb-6">
-            <span className="text-2xl sm:text-3xl font-black text-slate-900">
+            <span className="text-2xl sm:text-3xl font-black opacity-100">
               {formatCurrency(product.price)}
             </span>
             {product.compareAtPrice && product.compareAtPrice > product.price && (
-              <span className="text-sm sm:text-base text-slate-400 line-through">
+              <span className="text-sm sm:text-base opacity-60 line-through">
                 {formatCurrency(product.compareAtPrice)}
               </span>
             )}
           </div>
 
-          <div className="prose prose-sm text-slate-600 mb-8 max-w-none">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Descrição</h4>
+          <div className="prose prose-sm opacity-80 mb-8 max-w-none">
+            <h4 className="text-xs font-bold uppercase tracking-wider opacity-60 mb-2">Descrição</h4>
             <p className="whitespace-pre-line leading-relaxed text-sm">
               {product.description || 'Sem descrição detalhada para este item.'}
             </p>
           </div>
+
+          {product.videoUrl && (
+            <div className="mb-8">
+              <h4 className="text-xs font-bold uppercase tracking-wider opacity-60 mb-2">Vídeo do Produto</h4>
+              <div className="aspect-video rounded-xl overflow-hidden bg-opacity-10 border border-slate-200">
+                {product.videoUrl.includes('youtube.com') || product.videoUrl.includes('youtu.be') ? (
+                  <iframe
+                    className="w-full h-full"
+                    src={`https://www.youtube.com/embed/${
+                      product.videoUrl.includes('youtu.be') 
+                        ? product.videoUrl.split('youtu.be/')[1].split('?')[0] 
+                        : product.videoUrl.split('v=')[1]?.split('&')[0] || ''
+                    }`}
+                    title="Vídeo do Produto"
+                    frameBorder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                ) : (
+                  <video controls className="w-full h-full object-cover">
+                    <source src={product.videoUrl} />
+                    Seu navegador não suporta vídeos.
+                  </video>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Botões de Ação */}
           <div className="space-y-3 pt-6 border-t border-slate-200">
@@ -221,7 +249,7 @@ export function ProductDetail() {
               disabled={isOutOfStock}
               className={`w-full flex items-center justify-center py-3.5 px-6 rounded-xl font-semibold text-sm transition-all cursor-pointer shadow-xs active:scale-98
                 ${isOutOfStock 
-                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200' 
+                  ? 'bg-opacity-10 opacity-60 cursor-not-allowed border border-slate-200' 
                   : added 
                     ? 'bg-emerald-600 text-white hover:bg-emerald-700'
                     : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200'

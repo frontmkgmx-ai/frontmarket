@@ -9,6 +9,7 @@ import { ShoppingBag, LogOut, ArrowLeft, RefreshCw, User } from 'lucide-react';
 import { FastCache } from '../lib/cache';
 import { withTimeout } from '../lib/asyncGuard';
 import { SmartLoader } from '../components/SmartLoader';
+import { STORE_THEMES } from '../lib/themes';
 
 export function StorefrontLayout() {
   const { storeSlug } = useParams<{ storeSlug: string }>();
@@ -152,12 +153,14 @@ export function StorefrontLayout() {
     );
   }
 
+  const currentThemeId = store.settings?.theme || 'default';
+  const currentTheme = STORE_THEMES.find(t => t.id === currentThemeId) || STORE_THEMES[0];
   const themeColor = store.settings?.themeColor || '#4f46e5';
 
   return (
-    <div className="min-h-screen flex flex-col bg-white">
+    <div className={`min-h-screen flex flex-col ${currentTheme.colors.background} ${currentTheme.colors.text} ${currentTheme.fontFamily}`}>
       {/* Sticky Topbar HUD - Otimizado para Mobile e Desktop sem cortes */}
-      <header className="border-b border-slate-200/80 py-3 px-4 sm:px-6 sticky top-0 bg-white/95 backdrop-blur-md z-30 shadow-xs">
+      <header className={`border-b border-slate-200/50 py-3 px-4 sm:px-6 sticky top-0 ${currentTheme.colors.surface} z-30 shadow-xs backdrop-blur-md bg-opacity-95`}>
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
           {/* Logo / Store Name */}
           <Link 
@@ -231,17 +234,17 @@ export function StorefrontLayout() {
       
       {/* Main Page Area */}
       <main className="flex-grow w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8">
-        <Outlet context={{ store }} />
+        <Outlet context={{ store, currentTheme }} />
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-200 py-6 sm:py-8 bg-slate-50 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center text-xs text-slate-500 space-y-2">
+      <footer className={`border-t border-slate-200/50 py-6 sm:py-8 ${currentTheme.colors.surface} mt-auto`}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center text-xs opacity-70 space-y-2">
           <div>
-            &copy; {new Date().getFullYear()} <strong className="text-slate-800">{store.name}</strong>. Todos os direitos reservados.
+            &copy; {new Date().getFullYear()} <strong className="opacity-100">{store.name}</strong>. Todos os direitos reservados.
           </div>
           <div>
-            <Link to="/" className="text-[11px] text-slate-400 hover:text-indigo-600 transition-colors font-medium">
+            <Link to="/" className="text-[11px] opacity-60 hover:opacity-100 transition-opacity font-medium">
               Plataforma Front MK E-commerce
             </Link>
           </div>

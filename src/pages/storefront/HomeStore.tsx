@@ -8,9 +8,10 @@ import { ShoppingBag } from 'lucide-react';
 import { FastCache } from '../../lib/cache';
 import { withTimeout } from '../../lib/asyncGuard';
 import { SmartLoader } from '../../components/SmartLoader';
+import { ThemeConfig } from '../../lib/themes';
 
 export function HomeStore() {
-  const { store } = useOutletContext<{ store: Store }>();
+  const { store, currentTheme } = useOutletContext<{ store: Store; currentTheme: ThemeConfig }>();
   
   // Tenta carregar do cache instantâneo primeiro
   const [products, setProducts] = useState<Product[]>(() => {
@@ -77,27 +78,27 @@ export function HomeStore() {
     <div className="space-y-8">
       {/* Banner de Boas-vindas */}
       <div className="text-center py-8 sm:py-12 px-4 bg-slate-50 border border-slate-100 rounded-2xl sm:rounded-3xl shadow-2xs">
-        <h1 className="text-2xl sm:text-4xl font-extrabold text-slate-900 mb-2 sm:mb-3 tracking-tight">
+        <h1 className="text-2xl sm:text-4xl font-extrabold opacity-100 mb-2 sm:mb-3 tracking-tight">
           Bem-vindo(a) à {store.name}
         </h1>
-        <p className="text-sm sm:text-base text-slate-600 max-w-lg mx-auto">
+        <p className="text-sm sm:text-base opacity-80 max-w-lg mx-auto">
           Confira nossos produtos em destaque e aproveite as melhores ofertas.
         </p>
       </div>
 
       {/* Cabeçalho da Seção */}
       <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-        <h2 className="text-lg sm:text-2xl font-bold text-slate-900">Catálogo de Produtos</h2>
+        <h2 className="text-lg sm:text-2xl font-bold opacity-100">Catálogo de Produtos</h2>
         <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
           {products.length} {products.length === 1 ? 'item' : 'itens'}
         </span>
       </div>
 
       {products.length === 0 ? (
-        <div className="text-center py-16 px-4 text-slate-500 bg-white rounded-2xl border border-dashed border-slate-200">
-          <ShoppingBag className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-          <h3 className="text-base font-semibold text-slate-800 mb-1">Nenhum produto disponível</h3>
-          <p className="text-xs text-slate-500 max-w-xs mx-auto">
+        <div className={`text-center py-16 px-4 opacity-70 ${currentTheme.colors.surface} rounded-2xl border border-dashed ${currentTheme.colors.border}`}>
+          <ShoppingBag className="w-12 h-12 mx-auto mb-3 opacity-50" />
+          <h3 className="text-base font-semibold mb-1">Nenhum produto disponível</h3>
+          <p className="text-xs max-w-xs mx-auto">
             Esta loja ainda não possui produtos ativos disponíveis para venda.
           </p>
         </div>
@@ -107,7 +108,7 @@ export function HomeStore() {
             <Link 
               key={product.id} 
               to={`/${store.slug}/p/${product.slug}`} 
-              className="group flex flex-col bg-white border border-slate-200/80 rounded-xl sm:rounded-2xl overflow-hidden hover:border-indigo-400 hover:shadow-md transition-all"
+              className={`group flex flex-col ${currentTheme.colors.surface} border ${currentTheme.colors.border} rounded-xl sm:rounded-2xl overflow-hidden hover:border-indigo-400 hover:shadow-md transition-all`}
             >
               <div className="aspect-square bg-slate-100 overflow-hidden relative">
                 {product.images && product.images.length > 0 ? (
@@ -118,7 +119,7 @@ export function HomeStore() {
                     loading="lazy"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400 text-xs font-medium">
+                  <div className="w-full h-full flex items-center justify-center bg-slate-100 opacity-60 text-xs font-medium">
                     Sem Imagem
                   </div>
                 )}
@@ -130,10 +131,10 @@ export function HomeStore() {
               </div>
               
               <div className="p-3 sm:p-4 flex flex-col flex-1">
-                <h3 className="text-xs sm:text-sm font-semibold text-slate-800 group-hover:text-indigo-600 line-clamp-2 transition-colors">
+                <h3 className="text-xs sm:text-sm font-semibold opacity-90 group-hover:text-indigo-600 line-clamp-2 transition-colors">
                   {product.name}
                 </h3>
-                <p className="mt-auto pt-2 text-sm sm:text-base font-bold text-slate-900">
+                <p className="mt-auto pt-2 text-sm sm:text-base font-bold opacity-100">
                   {formatCurrency(product.price)}
                 </p>
               </div>

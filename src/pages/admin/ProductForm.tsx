@@ -32,6 +32,8 @@ export function ProductForm() {
   const [active, setActive] = useState(true);
   const [isDigital, setIsDigital] = useState(false);
   const [images, setImages] = useState<string[]>([]);
+  const [videoUrl, setVideoUrl] = useState('');
+  const [newImageUrl, setNewImageUrl] = useState('');
   
   // Weight & Dimensions
   const [weight, setWeight] = useState('');
@@ -59,6 +61,7 @@ export function ProductForm() {
             setActive(data.active !== false);
             setIsDigital(data.isDigital === true);
             setImages(data.images || []);
+            setVideoUrl(data.videoUrl || '');
             setWeight(data.weight?.toString() || '');
           }
         }
@@ -109,6 +112,7 @@ export function ProductForm() {
         active,
         isDigital,
         images,
+        videoUrl,
         weight: parseFloat(weight) || 0,
         updatedAt: serverTimestamp()
       };
@@ -210,6 +214,46 @@ export function ProductForm() {
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           <h2 className="text-lg font-medium text-gray-900 mb-4">Mídia</h2>
+          
+          <div className="mb-6 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Link de Vídeo (YouTube, MP4, etc.)</label>
+              <input
+                type="url"
+                value={videoUrl}
+                onChange={e => setVideoUrl(e.target.value)}
+                placeholder="https://youtube.com/watch?v=..."
+                className="mt-1 block w-full border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">O vídeo será exibido na página do produto (opcional).</p>
+            </div>
+            
+            <div className="pt-4 border-t border-gray-100">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Imagens do Produto</label>
+              <div className="flex gap-2 mb-4">
+                <input
+                  type="url"
+                  value={newImageUrl}
+                  onChange={e => setNewImageUrl(e.target.value)}
+                  placeholder="https://exemplo.com/imagem.jpg"
+                  className="block flex-1 border border-gray-300 rounded-md py-2 px-3 text-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (newImageUrl.trim()) {
+                      setImages([...images, newImageUrl.trim()]);
+                      setNewImageUrl('');
+                    }
+                  }}
+                  className="px-4 py-2 bg-slate-900 text-white rounded-md text-sm font-medium hover:bg-slate-800"
+                >
+                  Adicionar URL
+                </button>
+              </div>
+            </div>
+          </div>
+
           <div className="flex flex-wrap gap-4 mb-4">
             {images.map((url, i) => (
               <div key={i} className="relative h-24 w-24 border rounded-md overflow-hidden bg-gray-50">
@@ -224,13 +268,13 @@ export function ProductForm() {
               </div>
             ))}
             
-            <label className="h-24 w-24 border-2 border-dashed border-gray-300 rounded-md flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50">
+            <label className="h-24 w-24 border-2 border-dashed border-gray-300 rounded-md flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 shrink-0">
               {uploadingImage ? (
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-600"></div>
               ) : (
                 <>
                   <Upload className="w-6 h-6 text-gray-400" />
-                  <span className="text-xs text-gray-500 mt-1">Upload</span>
+                  <span className="text-xs text-gray-500 mt-1 text-center leading-tight px-1">Upload de<br/>Dispositivo</span>
                 </>
               )}
               <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} disabled={uploadingImage} />

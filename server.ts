@@ -2,12 +2,13 @@ import express from 'express';
 import path from 'path';
 import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
-import admin from 'firebase-admin';
+import { initializeApp, App, cert } from 'firebase-admin/app';
 import { getAuth as getFirebaseAuth } from 'firebase-admin/auth';
 import { getFirestore as getFirebaseFirestore, FieldValue } from 'firebase-admin/firestore';
 
 // Lazy Firebase Admin Initialization
-let firebaseAdminApp: admin.app.App | null = null;
+let firebaseAdminApp: App | null = null;
+
 function getFirebaseAdmin() {
   if (!firebaseAdminApp) {
     const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -16,8 +17,8 @@ function getFirebaseAdmin() {
     if (serviceAccountJson) {
       try {
         const serviceAccount = JSON.parse(serviceAccountJson);
-        firebaseAdminApp = admin.initializeApp({
-          credential: admin.credential.cert(serviceAccount),
+        firebaseAdminApp = initializeApp({
+          credential: cert(serviceAccount),
           projectId: serviceAccount.project_id || projectId,
         });
       } catch (err) {
@@ -27,10 +28,10 @@ function getFirebaseAdmin() {
     } else {
       // Fallback for AI Studio preview environment where default credentials might work if ADC is present
       // or we just initialize with projectId (Firestore can sometimes work with default credentials if the service account has access)
-      firebaseAdminApp = admin.initializeApp({
+      firebaseAdminApp = initializeApp({
         projectId
       });
-      console.warn('Initialized Firebase Admin without FIREBASE_SERVICE_ACCOUNT. This might fail if ADC is missing or lacks permissions.');
+      console.log('[INFO] Initialized Firebase Admin without FIREBASE_SERVICE_ACCOUNT. This might fail if ADC is missing or lacks permissions.');
     }
   }
   return firebaseAdminApp;
@@ -66,26 +67,29 @@ async function authMiddleware(req: express.Request, res: express.Response, next:
   }
 }
 
-// --- Helper: Get Didit OAuth 2.0 Token ---
-async function getDiditToken() {
-  if (!process.env.DIDIT_CLIENT_ID || !process.env.DIDIT_API_KEY) {
-    throw new Error('Missing DIDIT_CLIENT_ID or DIDIT_API_KEY');
+// --- Didit Webhook V3 Canonicalization Helpers ---
+function shortenFloats(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(shortenFloats);
+  if (v && typeof v === "object") {
+    return Object.fromEntries(
+      Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, shortenFloats(x)]),
+    );
   }
-  const response = await fetch('https://auth.didit.me/oauth2/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'client_credentials',
-      client_id: process.env.DIDIT_CLIENT_ID,
-      client_secret: process.env.DIDIT_API_KEY
-    })
-  });
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Didit Auth error: ${response.status} ${err}`);
+  if (typeof v === "number" && !Number.isInteger(v) && v % 1 === 0) return Math.trunc(v);
+  return v;
+}
+
+function sortKeys(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(sortKeys);
+  if (v && typeof v === "object") {
+    return Object.keys(v as object)
+      .sort()
+      .reduce<Record<string, unknown>>((acc, k) => {
+        acc[k] = sortKeys((v as Record<string, unknown>)[k]);
+        return acc;
+      }, {});
   }
-  const data = await response.json();
-  return data.access_token;
+  return v;
 }
 
 async function startServer() {
@@ -112,48 +116,28 @@ async function startServer() {
   app.post('/api/user/start-kyc', authMiddleware, async (req, res) => {
     const user = (req as any).user;
     
-    if (!process.env.DIDIT_API_KEY || !process.env.DIDIT_CLIENT_ID) {
-      console.warn('DIDIT API Credentials not configured. Using Mock KYC Flow.');
-      
-      const mockSessionId = 'mock_session_' + Date.now();
-      
-      return res.json({ 
-        verification_url: `/admin/verification?mock_session=${mockSessionId}`, 
-        session_id: mockSessionId,
-        mock: true
-      });
+    if (!process.env.DIDIT_API_KEY) {
+      return res.status(500).json({ error: 'DIDIT_API_KEY not configured.' });
     }
 
     try {
-      const token = await getDiditToken();
-
-      // Criar sessão Didit
-      const response = await fetch('https://apx.didit.me/v1/session/', {
+      // Criar sessão Didit (V3 API)
+      const response = await fetch('https://verification.didit.me/v3/session/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'x-api-key': process.env.DIDIT_API_KEY
         },
         body: JSON.stringify({
           workflow_id: process.env.DIDIT_WORKFLOW_ID || '6b43db1f-9cb7-48f1-a0a7-1941464fb1ca',
           vendor_data: user.uid,
-          callback: `${process.env.APP_URL || 'https://frontmarket.cysmk.online'}/admin/verification/result`,
-          callback_method: 'both',
-          language: 'pt-BR',
-          metadata: { user_email: user.email }
+          callback: `${process.env.APP_URL || 'https://frontmarket.cysmk.online'}/admin/verification/result`
         })
       });
       
       if (!response.ok) {
-        // Se a API da Didit falhar (ex: 404, chave inválida), forçamos o fluxo Mock para não quebrar a plataforma
         const errBody = await response.text();
-        console.warn(`Didit API failed with ${response.status}: ${errBody}. Falling back to Mock KYC Flow.`);
-        const mockSessionId = 'mock_session_' + Date.now();
-        return res.json({ 
-          verification_url: `/admin/verification?mock_session=${mockSessionId}`, 
-          session_id: mockSessionId,
-          mock: true
-        });
+        throw new Error(`Didit API error: ${response.status} ${errBody}`);
       }
 
       const session = await response.json();
@@ -174,47 +158,25 @@ async function startServer() {
     }
 
     try {
-      if (!process.env.DIDIT_API_KEY || !process.env.DIDIT_CLIENT_ID) {
-        if (sessionId.startsWith('mock_session')) {
-          return res.json({
-            kyc_status: 'approved',
-            session_id: sessionId,
-            verified_name: userAuth.name || 'Lojista Teste (Mock)',
-            document_type: 'RG',
-            face_match_score: 99.9
-          });
-        }
-        return res.status(500).json({ error: 'DIDIT API Credentials not configured.' });
+      if (!process.env.DIDIT_API_KEY) {
+        return res.status(500).json({ error: 'DIDIT_API_KEY not configured.' });
       }
 
-      // Consultar Didit em tempo real
-      let response;
-      try {
-        const token = await getDiditToken();
-        
-        response = await fetch(
-          `https://apx.didit.me/v1/session/${sessionId}/decision/`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        
-        if (!response.ok) {
-          throw new Error(`Didit API error: ${response.status}`);
-        }
-      } catch (fetchErr) {
-        console.warn(`Didit API fetch failed for status check. Falling back to Mock data.`);
-        return res.json({
-          kyc_status: 'approved',
-          session_id: sessionId,
-          verified_name: userAuth.name || 'Lojista Teste (Fallback)',
-          document_type: 'RG',
-          face_match_score: 99.9
-        });
+      // Consultar Didit em tempo real (V3 API)
+      const response = await fetch(
+        `https://verification.didit.me/v3/session/${sessionId}/decision/`,
+        { headers: { 'x-api-key': process.env.DIDIT_API_KEY } }
+      );
+      
+      if (!response.ok) {
+        const errBody = await response.text();
+        throw new Error(`Didit API error: ${response.status} ${errBody}`);
       }
       
       const decision = await response.json();
 
       res.json({
-        kyc_status: decision.status,         // approved | declined | review | started
+        kyc_status: decision.status,         // "Approved" | "Declined" | "In Review" | ...
         session_id: sessionId,
         verified_name: decision.features?.ocr?.first_name ? `${decision.features.ocr.first_name} ${decision.features.ocr.last_name || ''}`.trim() : null,
         document_type: decision.features?.ocr?.document_type,
@@ -229,77 +191,118 @@ async function startServer() {
   // Webhook body parser using express.raw
   app.post('/api/webhook/didit', express.raw({ type: 'application/json' }), async (req, res) => {
     try {
-      const signature = req.headers['x-didit-signature'];
-      const timestamp = req.headers['x-didit-timestamp'];
-      const body = req.body.toString();
-      
-      const secret = process.env.DIDIT_WEBHOOK_SECRET;
-      
-      if (secret) {
-        const expected = crypto
-          .createHmac('sha256', secret)
-          .update(`${timestamp}.${body}`)
-          .digest('hex');
-        
-        if (signature !== `sha256=${expected}`) {
-          return res.status(401).json({ error: 'Invalid signature' });
-        }
-      } else {
-        console.warn('DIDIT_WEBHOOK_SECRET not set, skipping signature verification');
+      const raw = req.body.toString();
+      const sig = (req.headers['x-signature-v2'] || '') as string;
+      const tsStr = req.headers['x-timestamp'] as string;
+      const ts = Number(tsStr);
+
+      // 1. Freshness (replay protection) - reject if older/newer than 300s
+      if (!ts || Math.abs(Date.now() / 1000 - ts) > 300) {
+        return res.status(401).json({ error: 'stale' });
       }
 
-      // 2. Processar evento
-      const event = JSON.parse(body);
-      
-      if (event.event_type === 'status.updated') {
-        const { session_id, status, vendor_data } = event;
-        const userId = vendor_data; // seu user ID
-        
-        if (!userId) {
-          return res.status(400).json({ error: 'Missing vendor_data (userId)' });
-        }
+      const secret = process.env.DIDIT_WEBHOOK_SECRET;
+      let parsed: any = {};
+      try {
+        parsed = JSON.parse(raw);
+      } catch (e) {
+        return res.status(400).json({ error: 'invalid json' });
+      }
 
+      if (secret) {
+        // 2. Canonicalise
+        const canonical = JSON.stringify(sortKeys(shortenFloats(parsed)));
+        
+        // 3. Constant-time HMAC-SHA256
+        const expected = crypto
+          .createHmac('sha256', secret)
+          .update(canonical, 'utf8')
+          .digest('hex');
+          
+        if (
+          sig.length !== expected.length ||
+          !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(sig))
+        ) {
+          return res.status(401).json({ error: 'bad sig' });
+        }
+      } else {
+        console.log('[INFO] DIDIT_WEBHOOK_SECRET not set, skipping signature verification');
+      }
+
+      // 4. Processar a decisão (V3 status)
+      const { status, vendor_data, session_id } = parsed;
+      const userId = vendor_data;
+
+      if (userId) {
         const userRef = getFirestore().collection('users').doc(userId);
         
+        // Deep search helper for document number
+        const findDocumentNumber = (obj: any): string | null => {
+          if (!obj || typeof obj !== 'object') return null;
+          if (obj.document_number) return obj.document_number;
+          if (obj.personal_number) return obj.personal_number;
+          for (const key of Object.keys(obj)) {
+            const res = findDocumentNumber(obj[key]);
+            if (res) return res;
+          }
+          return null;
+        };
+
         switch (status) {
-          case 'approved':
-            await userRef.set({ 
-              kyc_status: 'approved', 
-              kyc_session_id: session_id,
-              kyc_approved_at: FieldValue.serverTimestamp()
-            }, { merge: true });
+          case 'Approved': {
+            const documentNumber = findDocumentNumber(parsed);
+            let isDuplicate = false;
+            
+            if (documentNumber) {
+              const snapshot = await getFirestore().collection('users').where('kyc_cpf', '==', documentNumber).get();
+              const existingUsers = snapshot.docs.filter(doc => doc.id !== userId && doc.data().kyc_status === 'approved');
+              if (existingUsers.length > 0) {
+                isDuplicate = true;
+              }
+            }
+
+            if (isDuplicate) {
+              await userRef.set({ 
+                kyc_status: 'declined',
+                kyc_error: 'Este CPF já está em uso por outra conta verificada.',
+                kyc_declined_at: FieldValue.serverTimestamp()
+              }, { merge: true });
+            } else {
+              await userRef.set({ 
+                kyc_status: 'approved', 
+                kyc_session_id: session_id,
+                ...(documentNumber && { kyc_cpf: documentNumber }),
+                kyc_approved_at: FieldValue.serverTimestamp()
+              }, { merge: true });
+            }
             break;
-          case 'declined':
+          }
+          case 'Declined':
             await userRef.set({ 
               kyc_status: 'declined',
               kyc_declined_at: FieldValue.serverTimestamp()
             }, { merge: true });
             break;
-          case 'review':
+          case 'In Review':
             await userRef.set({ kyc_status: 'review' }, { merge: true });
             break;
-        }
-      }
-      
-      if (event.event_type === 'data.updated') {
-        const { session_id, ocr_data, vendor_data } = event;
-        if (vendor_data && ocr_data) {
-          const userRef = getFirestore().collection('users').doc(vendor_data);
-          await userRef.set({
-            kyc_verified_name: `${ocr_data.first_name} ${ocr_data.last_name || ''}`.trim(),
-            kyc_document_type: ocr_data.document_type
-          }, { merge: true });
+          case 'Resubmitted':
+          case 'Kyc Expired':
+            await userRef.set({ kyc_status: 'started' }, { merge: true });
+            break;
+          default:
+            // "Not Started", "In Progress", "Awaiting User", "Abandoned", "Expired"
+            break;
         }
       }
 
       // Save webhook event to a separate collection for logging
       try {
         await getFirestore().collection('kyc_webhook_events').add({
-          session_id: event.session_id,
-          event_type: event.event_type,
-          status: event.status,
-          vendor_data: event.vendor_data,
-          payload: event,
+          session_id: parsed.session_id || parsed.id,
+          status: parsed.status,
+          vendor_data: parsed.vendor_data,
+          payload: parsed,
           received_at: FieldValue.serverTimestamp()
         });
       } catch (logErr) {
