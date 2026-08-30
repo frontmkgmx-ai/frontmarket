@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import React, { useState, FormEvent } from 'react';
 import { Link, useNavigate, useOutletContext } from 'react-router';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../../firebase/config';
 import { Store } from '../../types';
@@ -14,26 +14,36 @@ export function CustomerRegister() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      
-      // Salva o perfil do cliente no escopo da loja
-      await setDoc(doc(db, 'stores', store.id, 'customers', userCredential.user.uid), {
-        id: userCredential.user.uid,
+      const user = userCredential.user;
+
+      await updateProfile(user, { displayName: name });
+
+      // Cria perfil de cliente
+      await setDoc(doc(db, 'users', user.uid), {
+        name,
+        email,
+        role: 'customer',
+        createdAt: serverTimestamp()
+      });
+
+      // Cria registro de cliente na loja
+      await setDoc(doc(db, 'stores', store.id, 'customers', user.uid), {
+        userId: user.uid,
         name,
         email,
         createdAt: serverTimestamp()
       });
 
-      // Após cadastro, redireciona para o checkout
       navigate(`/${store.slug}/checkout`);
     } catch (err: any) {
-      setError(err.message || 'Erro ao criar conta. Verifique seus dados.');
+      setError(err.message || 'Erro ao criar conta. Tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -43,7 +53,7 @@ export function CustomerRegister() {
     <div className="min-h-[70vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900">Criar conta em {store.name}</h2>
+          <h2 className="text-2xl font-bold text-gray-900">Cadastre-se na {store.name}</h2>
           <p className="mt-2 text-sm text-gray-600">
             Já tem uma conta?{' '}
             <Link to={`/${store.slug}/login`} className="font-medium text-indigo-600 hover:text-indigo-500">
@@ -87,11 +97,10 @@ export function CustomerRegister() {
               <input
                 type="password"
                 required
-                minLength={6}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="mt-1 block w-full rounded-lg border-gray-300 py-3 px-4 border focus:ring-indigo-500 focus:border-indigo-500"
-                placeholder="••••••••"
+                placeholder="Mínimo 6 caracteres"
               />
             </div>
           </div>
@@ -99,9 +108,9 @@ export function CustomerRegister() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 transition-colors"
+            className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 transition-colors cursor-pointer"
           >
-            {loading ? 'Criando...' : 'Criar minha conta'}
+            {loading ? 'Criando conta...' : 'Cadastrar e Continuar'}
           </button>
         </form>
       </div>

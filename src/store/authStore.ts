@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { User, onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
 import { auth, db } from '../firebase/config';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, Unsubscribe } from 'firebase/firestore';
 import { UserProfile, Store } from '../types';
 
 interface AuthState {
@@ -11,12 +11,14 @@ interface AuthState {
   loading: boolean;
   initialized: boolean;
   initialize: () => void;
-  reloadProfile: (retries?: number) => Promise<void>;
+  reloadProfile: () => Promise<void>;
   setActiveStore: (store: Store | null) => void;
   signOut: () => Promise<void>;
 }
 
-let authListener: any = null;
+let authListener: Unsubscribe | null = null;
+let profileListener: Unsubscribe | null = null;
+let storeListener: Unsubscribe | null = null;
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
@@ -25,49 +27,92 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   loading: true,
   initialized: false,
   
-  reloadProfile: async (retries = 3) => {
+  reloadProfile: async () => {
     const { user } = get();
     if (!user) return;
     
-    for (let i = 0; i < retries; i++) {
-      try {
-        const profileDoc = await getDoc(doc(db, 'users', user.uid));
-        let activeStore = null;
-
-        if (profileDoc.exists()) {
-          const profile = profileDoc.data() as UserProfile;
-          
-          if (profile.stores && profile.stores.length > 0) {
-            const storeDoc = await getDoc(doc(db, 'stores', profile.stores[0]));
-            if (storeDoc.exists()) {
-              activeStore = { id: storeDoc.id, ...storeDoc.data() } as Store;
-            }
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      const profileDoc = await getDoc(userRef);
+      
+      if (profileDoc.exists()) {
+        const profile = profileDoc.data() as UserProfile;
+        set({ profile });
+        
+        if (profile.stores && profile.stores.length > 0) {
+          const storeDoc = await getDoc(doc(db, 'stores', profile.stores[0]));
+          if (storeDoc.exists()) {
+            set({ activeStore: { id: storeDoc.id, ...storeDoc.data() } as Store });
           }
-          
-          set({ profile, activeStore });
-        }
-        return; // Success, exit retry loop
-      } catch (error: any) {
-        if (i === retries - 1) {
-          console.error("Error fetching user data:", error.message || error);
-        } else {
-          // Wait before retrying (exponential backoff)
-          await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
         }
       }
+    } catch (error: any) {
+      console.error("Error fetching user data:", error.message || error);
     }
   },
 
   initialize: () => {
-    if (authListener) return; // Prevents multiple listeners
+    if (authListener) return; // Evita múltiplos listeners
     
-    authListener = onAuthStateChanged(auth, async (firebaseUser) => {
+    authListener = onAuthStateChanged(auth, (firebaseUser) => {
+      // Limpa listeners anteriores
+      if (profileListener) {
+        profileListener();
+        profileListener = null;
+      }
+      if (storeListener) {
+        storeListener();
+        storeListener = null;
+      }
+
       if (firebaseUser) {
         set({ user: firebaseUser, loading: true });
-        await get().reloadProfile();
-        set({ loading: false, initialized: true });
+
+        // Inicia listener em tempo real para o perfil do usuário
+        const userRef = doc(db, 'users', firebaseUser.uid);
+        profileListener = onSnapshot(userRef, async (profileSnap) => {
+          if (profileSnap.exists()) {
+            const profile = profileSnap.data() as UserProfile;
+            set({ profile });
+
+            // Se o usuário possui lojas cadastradas, escuta a loja principal em tempo real
+            if (profile.stores && profile.stores.length > 0) {
+              const storeId = profile.stores[0];
+              
+              if (storeListener) storeListener();
+              storeListener = onSnapshot(doc(db, 'stores', storeId), (storeSnap) => {
+                if (storeSnap.exists()) {
+                  set({ 
+                    activeStore: { id: storeSnap.id, ...storeSnap.data() } as Store,
+                    loading: false, 
+                    initialized: true 
+                  });
+                } else {
+                  set({ loading: false, initialized: true });
+                }
+              }, (err) => {
+                console.error("Store snapshot error:", err);
+                set({ loading: false, initialized: true });
+              });
+            } else {
+              set({ activeStore: null, loading: false, initialized: true });
+            }
+          } else {
+            // Perfil ainda não gravado ou novo registro
+            set({ loading: false, initialized: true });
+          }
+        }, (err) => {
+          console.error("Profile snapshot error:", err);
+          set({ loading: false, initialized: true });
+        });
       } else {
-        set({ user: null, profile: null, activeStore: null, loading: false, initialized: true });
+        set({ 
+          user: null, 
+          profile: null, 
+          activeStore: null, 
+          loading: false, 
+          initialized: true 
+        });
       }
     });
   },
@@ -75,6 +120,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   setActiveStore: (store) => set({ activeStore: store }),
   
   signOut: async () => {
+    if (profileListener) {
+      profileListener();
+      profileListener = null;
+    }
+    if (storeListener) {
+      storeListener();
+      storeListener = null;
+    }
     await firebaseSignOut(auth);
     set({ user: null, profile: null, activeStore: null });
   }

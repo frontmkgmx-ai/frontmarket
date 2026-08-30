@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, FormEvent, ChangeEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { doc, getDoc, collection, addDoc, updateDoc, serverTimestamp, getDocs } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
@@ -69,7 +69,7 @@ export function ProductForm() {
     loadData();
   }, [activeStore, id, isEditing]);
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || !e.target.files[0] || !activeStore) return;
     const file = e.target.files[0];
     setUploadingImage(true);
@@ -90,7 +90,7 @@ export function ProductForm() {
     setImages(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!activeStore) return;
     setSubmitting(true);
@@ -129,7 +129,7 @@ export function ProductForm() {
   };
 
   if (loading) {
-    return <div>Carregando...</div>;
+    return <div className="p-8 text-center text-gray-500">Carregando formulário...</div>;
   }
 
   return (

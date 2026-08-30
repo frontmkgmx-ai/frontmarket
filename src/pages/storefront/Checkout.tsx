@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import React, { useState, FormEvent } from 'react';
 import { useOutletContext, useNavigate, Link } from 'react-router';
-import { collection, addDoc, serverTimestamp, doc, runTransaction } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase/config';
-import { Store, OrderItem } from '../../types';
+import { Store } from '../../types';
 import { formatCurrency } from '../../lib/utils';
 import { useCartStore } from '../../store/cartStore';
 import { useAuthStore } from '../../store/authStore';
@@ -33,7 +33,7 @@ export function Checkout() {
 
   const total = getTotal();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (items.length === 0 || !store || !user) return;
     setLoading(true);
@@ -62,7 +62,7 @@ export function Checkout() {
           city,
           state
         },
-        paymentMethod: 'pix', // Mocked for now
+        paymentMethod: 'pix',
         createdAt: serverTimestamp()
       };
 
@@ -230,7 +230,7 @@ export function Checkout() {
               type="submit"
               form="checkout-form"
               disabled={loading}
-              className="w-full flex justify-center items-center py-4 px-4 border border-transparent rounded-xl shadow-sm text-base font-bold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 transition-colors"
+              className="w-full flex justify-center items-center py-4 px-4 border border-transparent rounded-xl shadow-sm text-base font-bold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 transition-colors cursor-pointer"
             >
               {loading ? 'Processando...' : 'Confirmar Pedido (PIX)'}
             </button>
@@ -243,4 +243,3 @@ export function Checkout() {
     </div>
   );
 }
-

@@ -1,0 +1,57 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Perfil de usuário da plataforma Front MK",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["merchant", "customer", "admin"] },
+        "stores": { "type": "array" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["email", "role"]
+    },
+    "Store": {
+      "title": "Store",
+      "description": "Loja virtual do lojista",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["name", "slug", "ownerId"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Produto da loja",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "price": { "type": "number" },
+        "stock": { "type": "number" },
+        "active": { "type": "boolean" },
+        "storeId": { "type": "string" }
+      },
+      "required": ["name", "price", "active"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Perfis de usuários"
+    },
+    "/stores/{storeId}": {
+      "schema": "Store",
+      "description": "Coleção de lojas"
+    },
+    "/stores/{storeId}/products/{productId}": {
+      "schema": "Product",
+      "description": "Produtos da loja"
+    }
+  }
+}
