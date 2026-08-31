@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useAuthStore } from '../../store/authStore';
-import { DollarSign, ShoppingBag, Users, Package, ExternalLink, Sparkles } from 'lucide-react';
+import { DollarSign, ShoppingBag, Users, Package, ExternalLink, Sparkles, CheckCircle2, Clock, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
 import { Link } from 'react-router';
 import { FastCache } from '../../lib/cache';
 
 export function Dashboard() {
-  const { activeStore } = useAuthStore();
+  const { activeStore, profile } = useAuthStore();
   const cacheKey = activeStore?.id ? `dash_stats_${activeStore.id}` : '';
   
   const [stats, setStats] = useState(() => {
@@ -137,25 +137,134 @@ export function Dashboard() {
         )}
       </div>
 
-      <div className="bg-gradient-to-r from-teal-50 to-emerald-50 rounded-2xl border border-teal-100 p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row items-center gap-4 sm:gap-6 justify-between">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shrink-0 border border-teal-200 shadow-sm">
-            <Sparkles className="w-6 h-6 text-teal-600" />
+      {(() => {
+        const kycStatus = (profile?.kyc_status || '').toLowerCase();
+        const verificationStatus = ((profile as any)?.verification_status || '').toLowerCase();
+        const isVerifiedBool = (profile as any)?.verified === true;
+        
+        const isApproved = isVerifiedBool || 
+          kycStatus === 'approved' || kycStatus === 'completed' || kycStatus === 'verified' || kycStatus === 'success' ||
+          verificationStatus === 'approved' || verificationStatus === 'completed' || verificationStatus === 'verified';
+
+        const isPending = !isApproved && (
+          kycStatus === 'started' || kycStatus === 'pending' || kycStatus === 'in_progress' || kycStatus === 'in progress' || kycStatus === 'review' || kycStatus === 'in review' ||
+          verificationStatus === 'in_progress' || verificationStatus === 'pending_review'
+        );
+
+        const isDeclined = !isApproved && !isPending && (
+          kycStatus === 'declined' || kycStatus === 'rejected' || kycStatus === 'failed' ||
+          verificationStatus === 'declined' || verificationStatus === 'rejected'
+        );
+
+        if (isApproved) {
+          return (
+            <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50/80 rounded-2xl border border-emerald-200 p-4 sm:p-5 shadow-2xs flex flex-col sm:flex-row items-center gap-4 sm:gap-6 justify-between">
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 bg-white rounded-full flex items-center justify-center shrink-0 border border-emerald-200 text-emerald-600 shadow-2xs">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-emerald-950 text-sm sm:text-base">Documentação Aprovada & Verificada</h3>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                      KYC Ativo
+                    </span>
+                  </div>
+                  <p className="text-xs text-emerald-800/80 mt-0.5">
+                    Sua identidade foi confirmada e sua loja possui o selo oficial de verificação e segurança da Didit.
+                  </p>
+                </div>
+              </div>
+              <Link 
+                to="/admin/verification" 
+                className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 bg-white hover:bg-emerald-100/60 text-emerald-800 border border-emerald-200 text-xs font-bold rounded-xl transition-colors shadow-2xs whitespace-nowrap"
+              >
+                Ver Detalhes
+              </Link>
+            </div>
+          );
+        }
+
+        if (isPending) {
+          return (
+            <div className="bg-gradient-to-r from-amber-50 via-yellow-50 to-amber-50/80 rounded-2xl border border-amber-200 p-4 sm:p-5 shadow-2xs flex flex-col sm:flex-row items-center gap-4 sm:gap-6 justify-between">
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 bg-white rounded-full flex items-center justify-center shrink-0 border border-amber-200 text-amber-600 shadow-2xs">
+                  <Clock className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-amber-950 text-sm sm:text-base">Verificação em Processamento</h3>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                      Em Análise
+                    </span>
+                  </div>
+                  <p className="text-xs text-amber-800/80 mt-0.5">
+                    Seus documentos estão em validação de biometria pela Didit.
+                  </p>
+                </div>
+              </div>
+              <Link 
+                to="/admin/verification" 
+                className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition-colors shadow-2xs whitespace-nowrap"
+              >
+                Acompanhar Status
+              </Link>
+            </div>
+          );
+        }
+
+        if (isDeclined) {
+          return (
+            <div className="bg-gradient-to-r from-rose-50 via-red-50 to-rose-50/80 rounded-2xl border border-rose-200 p-4 sm:p-5 shadow-2xs flex flex-col sm:flex-row items-center gap-4 sm:gap-6 justify-between">
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 bg-white rounded-full flex items-center justify-center shrink-0 border border-rose-200 text-rose-600 shadow-2xs">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-rose-950 text-sm sm:text-base">Ajuste de Documentos Necessário</h3>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                      Recusado
+                    </span>
+                  </div>
+                  <p className="text-xs text-rose-800/80 mt-0.5">
+                    Houve uma inconsistência na validação dos documentos. Por favor, envie fotos nítidas novamente.
+                  </p>
+                </div>
+              </div>
+              <Link 
+                to="/admin/verification" 
+                className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-colors shadow-2xs whitespace-nowrap"
+              >
+                Reenviar Documentos
+              </Link>
+            </div>
+          );
+        }
+
+        return (
+          <div className="bg-gradient-to-r from-teal-50 to-emerald-50 rounded-2xl border border-teal-100 p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row items-center gap-4 sm:gap-6 justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shrink-0 border border-teal-200 shadow-sm">
+                <ShieldCheck className="w-6 h-6 text-teal-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-teal-900">Segurança da Loja (KYC)</h3>
+                <p className="text-xs text-teal-700 mt-0.5">
+                  Valide sua identidade via Didit para obter o selo de loja verificada e aumentar sua credibilidade.
+                </p>
+              </div>
+            </div>
+            <Link 
+              to="/admin/verification" 
+              className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-xl transition-colors shadow-sm whitespace-nowrap"
+            >
+              Verificar Agora
+            </Link>
           </div>
-          <div>
-            <h3 className="font-bold text-teal-900">Segurança da Loja (KYC)</h3>
-            <p className="text-xs text-teal-700 mt-0.5">
-              Valide sua identidade via Didit para obter o selo de loja verificada e aumentar sua credibilidade.
-            </p>
-          </div>
-        </div>
-        <Link 
-          to="/admin/verification" 
-          className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-xl transition-colors shadow-sm whitespace-nowrap"
-        >
-          Verificar Agora
-        </Link>
-      </div>
+        );
+      })()}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {statCards.map((stat) => (

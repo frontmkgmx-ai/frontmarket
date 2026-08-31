@@ -5,6 +5,10 @@ export interface UserProfile {
   createdAt?: string;
   role?: string;
   stores?: string[]; // IDs of stores this user is part of
+  kyc_status?: string;
+  kyc_session_id?: string;
+  kyc_session_created_at?: number;
+  kyc_error?: string;
 }
 
 export interface Store {

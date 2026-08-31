@@ -20,10 +20,16 @@ import {
 import { useState } from 'react';
 
 export function DashboardLayout() {
-  const { activeStore, signOut } = useAuthStore();
+  const { activeStore, profile, signOut } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const kycStatusLower = (profile?.kyc_status || '').toLowerCase();
+  const verificationStatusLower = ((profile as any)?.verification_status || '').toLowerCase();
+  const isKycApproved = (profile as any)?.verified === true ||
+    kycStatusLower === 'approved' || kycStatusLower === 'completed' || kycStatusLower === 'verified' || kycStatusLower === 'success' ||
+    verificationStatusLower === 'approved' || verificationStatusLower === 'completed' || verificationStatusLower === 'verified';
 
   const handleSignOut = async () => {
     await signOut();
@@ -120,7 +126,14 @@ export function DashboardLayout() {
                 }`}
               >
                 <Icon className={`w-4 h-4 mr-3 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                <span className="truncate">{item.name}</span>
+                <span className="truncate flex-1">{item.name}</span>
+                {item.name === 'Verificação' && isKycApproved && (
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                    isActive ? 'bg-emerald-500 text-white' : 'bg-emerald-950/80 text-emerald-400 border border-emerald-800'
+                  }`}>
+                    Ativo
+                  </span>
+                )}
               </Link>
             );
           })}
