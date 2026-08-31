@@ -2,11 +2,10 @@ import React from 'react';
 import { useDiditStatus } from '../hooks/useDiditStatus';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  approved: { label: '✅ Aprovado', color: '#22c55e' },
-  declined: { label: '❌ Recusado', color: '#ef4444' },
-  review: { label: '🔍 Em revisão', color: '#f59e0b' },
-  pending: { label: '⏳ Pendente', color: '#6b7280' },
-  processing: { label: '⚙️ Processando', color: '#3b82f6' },
+  approved: { label: '✅ Aprovada', color: '#22c55e' },
+  declined: { label: '❌ Rejeitada', color: '#ef4444' },
+  in_progress: { label: '🔍 Em análise', color: '#f59e0b' },
+  pending: { label: '⏳ Aguardando verificação', color: '#6b7280' },
 };
 
 interface KYCStatusProps {

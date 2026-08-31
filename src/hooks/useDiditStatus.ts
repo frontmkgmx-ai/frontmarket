@@ -16,50 +16,54 @@ export function useDiditStatus(vendorData?: string) {
   const fetchStatus = useCallback(async (sessionIdToPoll?: string) => {
     if (!vendorData && !sessionIdToPoll) {
       setLoading(false);
-      return;
+      return null;
     }
     
     try {
       setLoading(true);
       
-      let finalStatus = null;
+      const params = new URLSearchParams();
+      if (vendorData) params.set('vendor_data', vendorData);
+      
+      const currentSessionId = sessionIdToPoll || urlSessionId;
+      if (currentSessionId) params.set('session_id', currentSessionId);
+
+      const resAPI = await fetch(`/api/didit/session?${params.toString()}`);
+      
+      if (!resAPI.ok) {
+        throw new Error(`HTTP error ${resAPI.status}`);
+      }
+      
+      const dataAPI = await resAPI.json();
+      
+      let finalStatus = 'pending';
       let finalDocData = null;
 
-      // 1. Tentar ler do Webhook KV (Cloudflare) via vendorData
-      if (vendorData) {
-        const resKV = await fetch(`/api/webhooks/didit?vendor_data=${encodeURIComponent(vendorData)}`);
-        if (resKV.ok) {
-          const textKV = await resKV.text();
-          if (textKV) {
-            const dataKV = JSON.parse(textKV);
-            if (Object.keys(dataKV).length > 0) {
-              finalStatus = dataKV.status || null;
-              finalDocData = dataKV.document_data || null;
-            }
-          }
+      if (dataAPI) {
+        if (dataAPI.api_error) {
+          console.error('Erro na API da Didit:', dataAPI.api_error);
+          // O status já deve vir como fallback "pending" se houver erro da API, mas garantimos aqui:
+          finalStatus = dataAPI.status || 'pending';
+        } else if (dataAPI.status) {
+          finalStatus = dataAPI.status;
+        }
+
+        if (dataAPI.document_data) {
+          finalDocData = dataAPI.document_data;
         }
       }
 
-      // 2. Se não encontrou no KV, faz o Polling Direto na API da Didit via session_id da URL
-      const currentSessionId = sessionIdToPoll || urlSessionId;
-      if (!finalStatus && currentSessionId) {
-        const resAPI = await fetch(`/api/user/kyc-status?session_id=${currentSessionId}`);
-        if (resAPI.ok) {
-          const dataAPI = await resAPI.json();
-          if (dataAPI && dataAPI.status) {
-            finalStatus = dataAPI.status;
-            // Atualiza no banco de dados Firestore
-            if (vendorData) {
-              try {
-                await updateDoc(doc(db, 'users', vendorData), {
-                  kyc_status: finalStatus,
-                  kyc_session_id: currentSessionId
-                });
-              } catch (e) {
-                console.warn('Erro ao sincronizar status no Firestore', e);
-              }
-            }
-          }
+      // Sincroniza com o Firestore
+      if (vendorData && finalStatus) {
+        try {
+          const updatePayload: any = {
+            kyc_status: finalStatus,
+          };
+          if (currentSessionId) updatePayload.kyc_session_id = currentSessionId;
+          
+          await updateDoc(doc(db, 'users', vendorData), updatePayload);
+        } catch (e) {
+          console.warn('Erro ao sincronizar status no Firestore', e);
         }
       }
 
@@ -70,6 +74,7 @@ export function useDiditStatus(vendorData?: string) {
       return finalStatus;
     } catch (err: any) {
       setError(err.message);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -93,14 +98,14 @@ export function useDiditStatus(vendorData?: string) {
   useEffect(() => {
     fetchStatus();
     
-    // Polling a cada 5 segundos para atualizar status em tempo real
+    // Polling a cada 4 segundos para atualizar status em tempo real
     const interval = setInterval(async () => {
       const currentStatus = await fetchStatus();
       // Se já aprovou ou recusou, pode parar o polling
       if (currentStatus === 'approved' || currentStatus === 'declined') {
         clearInterval(interval);
       }
-    }, 5000);
+    }, 4000);
     
     return () => clearInterval(interval);
   }, [fetchStatus]);

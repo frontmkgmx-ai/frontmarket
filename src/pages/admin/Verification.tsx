@@ -73,30 +73,36 @@ export function Verification() {
         const statusLower = (userData?.kyc_status || '').toLowerCase();
         const sessionId = userData?.kyc_session_id;
 
-        if (statusLower === 'started' || statusLower === 'in progress' || statusLower === 'awaiting user' || statusLower === 'review' || statusLower === 'in review') {
+        // Incluindo os status normalizados: 'pending', 'in_progress'
+        if (statusLower === 'started' || statusLower === 'pending' || statusLower === 'in_progress' || statusLower === 'in progress' || statusLower === 'awaiting user' || statusLower === 'review' || statusLower === 'in review') {
           
           let updatedStatus = userData?.kyc_status;
 
-          // 1. Tentar consultar a API da Didit diretamente (bypass webhook)
-          if (sessionId) {
-            try {
-              const resAPI = await fetch(`/api/user/kyc-status?session_id=${sessionId}`);
-              if (resAPI.ok) {
-                const dataAPI = await resAPI.json();
-                if (dataAPI && dataAPI.status) {
-                  updatedStatus = dataAPI.status;
-                  const newStatusLower = updatedStatus.toLowerCase();
-                  
-                  if (newStatusLower !== statusLower) {
-                    await setDoc(doc(db, 'users', user.uid), {
-                      kyc_status: updatedStatus
-                    }, { merge: true });
-                  }
+          // 1. Consultar a nova API consolidada (/api/didit/session)
+          const params = new URLSearchParams();
+          params.set('vendor_data', user.uid);
+          if (sessionId) params.set('session_id', sessionId);
+
+          try {
+            const resAPI = await fetch(`/api/didit/session?${params.toString()}`);
+            if (resAPI.ok) {
+              const dataAPI = await resAPI.json();
+              if (dataAPI.api_error) {
+                console.warn('Erro da API da Didit (mantendo fallback):', dataAPI.api_error);
+                updatedStatus = dataAPI.status || 'pending';
+              } else if (dataAPI && dataAPI.status) {
+                updatedStatus = dataAPI.status;
+                const newStatusLower = updatedStatus.toLowerCase();
+                
+                if (newStatusLower !== statusLower) {
+                  await setDoc(doc(db, 'users', user.uid), {
+                    kyc_status: updatedStatus
+                  }, { merge: true });
                 }
               }
-            } catch (e) {
-              console.warn('Erro ao consultar status direto na API', e);
             }
+          } catch (e) {
+            console.warn('Erro ao consultar status na nova API de sessão', e);
           }
 
           // 2. Fallback de Aprovação Automática após 5 minutos
@@ -104,9 +110,9 @@ export function Verification() {
           if (currentStatusLower !== 'approved' && currentStatusLower !== 'declined') {
             const sessionCreatedAt = userData?.kyc_session_created_at || pollingStartTime;
             if (Date.now() - sessionCreatedAt > FIVE_MINUTES) {
-              updatedStatus = 'Approved';
+              updatedStatus = 'approved';
               await setDoc(doc(db, 'users', user.uid), {
-                kyc_status: 'Approved',
+                kyc_status: 'approved',
                 kyc_fallback_applied: true
               }, { merge: true });
             }
@@ -120,7 +126,7 @@ export function Verification() {
           } as any);
           
         } else {
-          // Se já está aprovado/recusado, apenas garante que a tela está sincronizada
+          // Se já está aprovado/recusado, apenas garante que a tela está sincronizada e para de chamar a API
           setKycStatus({ 
             kyc_status: userData?.kyc_status || 'not_started',
             session_id: sessionId,
@@ -130,7 +136,7 @@ export function Verification() {
       } catch (e) {
         console.error('Polling error', e);
       }
-    }, 5000);
+    }, 4000);
     
     return () => clearInterval(interval);
   }, []);
@@ -264,10 +270,11 @@ export function Verification() {
 
   const statusLower = (kycStatus?.kyc_status || 'not_started').toLowerCase();
 
-  const isApproved = statusLower === 'approved';
-  const isDeclined = statusLower === 'declined';
-  const isReview = statusLower === 'review' || statusLower === 'in review';
-  const isPending = statusLower === 'started' || statusLower === 'in progress' || statusLower === 'awaiting user';
+  // Normalized Statuses + Legacy Fallbacks
+  const isApproved = statusLower === 'approved' || statusLower === 'completed' || statusLower === 'verified' || statusLower === 'success';
+  const isDeclined = statusLower === 'declined' || statusLower === 'rejected' || statusLower === 'failed';
+  const isReview = statusLower === 'in_progress' || statusLower === 'review' || statusLower === 'in review';
+  const isPending = statusLower === 'pending' || statusLower === 'waiting' || statusLower === 'awaiting user' || statusLower === 'started' || statusLower === 'in progress';
   const isNotStarted = !isApproved && !isDeclined && !isReview && !isPending;
 
   return (
