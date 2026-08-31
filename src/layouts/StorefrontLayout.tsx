@@ -163,16 +163,84 @@ export function StorefrontLayout() {
   const headerStyle = store.settings?.headerStyle || 'default';
   const footerStyle = store.settings?.footerStyle || 'default';
 
+  const getHeaderLayout = () => {
+    switch (headerStyle) {
+      case 'centered':
+        return 'flex-col sm:flex-row items-center justify-between gap-4 py-4';
+      case 'minimalist':
+        return 'justify-between py-2 border-b-0 shadow-none';
+      case 'topnav':
+        return 'justify-between py-2 bg-slate-900 text-white border-b-0 shadow-md';
+      case 'dualnav':
+        return 'justify-between py-3 border-b-4 shadow-sm';
+      case 'sticky':
+        return 'justify-between py-4 shadow-xl border-b-0';
+      case 'floating':
+        return 'justify-between py-3 px-6 mx-4 sm:mx-6 mt-4 mb-2 rounded-full border border-slate-200 shadow-lg';
+      case 'appstyle':
+        return 'justify-between py-4 border-b-0 shadow-sm sm:shadow-none';
+      case 'logoright':
+        return 'flex-row-reverse justify-between py-3';
+      case 'compact':
+        return 'justify-between py-2';
+      default:
+        return 'justify-between py-3';
+    }
+  };
+
+  const getHeaderClasses = () => {
+    let classes = `px-4 sm:px-6 sticky top-0 z-30 backdrop-blur-md bg-opacity-95 transition-all `;
+    
+    if (headerStyle === 'topnav') {
+      classes += 'bg-slate-900 border-b-0 text-white shadow-md';
+    } else if (headerStyle === 'floating') {
+      classes += `${currentTheme.colors.surface} !top-4 !bg-opacity-100 rounded-full`;
+    } else {
+      classes += `${currentTheme.colors.surface} border-b border-slate-200/50 shadow-xs`;
+    }
+    
+    if (headerStyle === 'dualnav') {
+      classes = classes.replace('border-slate-200/50', '');
+    }
+    
+    return classes;
+  };
+
+  const getFooterClasses = () => {
+    switch (footerStyle) {
+      case 'dark':
+        return 'bg-slate-900 text-slate-400 border-t border-slate-800 py-8';
+      case 'minimalist':
+        return `${currentTheme.colors.surface} py-4 opacity-70 text-center border-t-0`;
+      case 'multicolumn':
+        return `${currentTheme.colors.surface} py-12 text-left border-t-2 border-slate-100`;
+      case 'centered':
+        return `${currentTheme.colors.surface} py-8 text-center border-t border-slate-200/50`;
+      case 'banner':
+        return `bg-indigo-50 text-indigo-900 border-t-4 py-8`;
+      case 'floating':
+        return `${currentTheme.colors.surface} mx-4 sm:mx-8 mb-4 rounded-3xl border shadow-xl py-6 text-center`;
+      case 'fixed':
+        return `${currentTheme.colors.surface} py-6 text-center shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.1)] border-t border-slate-200/50`;
+      case 'modernlight':
+        return `bg-slate-50 text-slate-500 rounded-t-3xl border-t border-slate-200 py-10`;
+      case 'appbar':
+        return `${currentTheme.colors.surface} py-4 border-t shadow-inner text-sm`;
+      default:
+        return `${currentTheme.colors.surface} border-t border-slate-200/50 py-6 sm:py-8`;
+    }
+  };
+
   return (
     <div className={`min-h-screen flex flex-col ${currentTheme.colors.background} ${currentTheme.colors.text} ${currentTheme.fontFamily}`}>
       {/* Sticky Topbar HUD - Otimizado para Mobile e Desktop sem cortes */}
-      <header className={`border-b border-slate-200/50 py-3 px-4 sm:px-6 sticky top-0 ${currentTheme.colors.surface} z-30 shadow-xs backdrop-blur-md bg-opacity-95`}>
-        <div className={`max-w-7xl mx-auto flex items-center gap-2 ${headerStyle === 'centered' ? 'justify-between flex-col sm:flex-row' : 'justify-between'}`}>
+      <header className={getHeaderClasses()} style={headerStyle === 'dualnav' ? { borderBottomColor: themeColor } : {}}>
+        <div className={`max-w-7xl mx-auto flex items-center gap-2 ${getHeaderLayout()}`}>
           {/* Logo / Store Name */}
           <Link 
             to={`/${store.slug}`} 
             className={`text-lg sm:text-2xl font-bold tracking-tight truncate hover:opacity-90 transition-opacity flex items-center gap-2 max-w-[200px] sm:max-w-md ${headerStyle === 'centered' ? 'mx-auto sm:mx-0' : ''}`}
-            style={{ color: themeColor }}
+            style={{ color: headerStyle === 'topnav' ? '#ffffff' : themeColor }}
           >
             {store.settings?.logoUrl ? (
                <img src={store.settings.logoUrl} alt={store.name} className="h-10 object-contain" onError={(e) => (e.currentTarget.style.display = 'none')} />
@@ -248,8 +316,8 @@ export function StorefrontLayout() {
       </main>
 
       {/* Footer */}
-      <footer className={`border-t border-slate-200/50 py-6 sm:py-8 mt-auto ${footerStyle === 'dark' ? 'bg-slate-900 text-slate-400 border-slate-800' : currentTheme.colors.surface}`}>
-        <div className={`max-w-7xl mx-auto px-4 sm:px-6 text-xs space-y-2 ${footerStyle === 'centered' ? 'text-center' : footerStyle === 'dark' ? 'text-center text-slate-400' : 'text-center opacity-70'}`}>
+      <footer className={`mt-auto ${getFooterClasses()}`}>
+        <div className={`max-w-7xl mx-auto px-4 sm:px-6 text-xs space-y-2`}>
           <div>
             &copy; {new Date().getFullYear()} <strong className={footerStyle === 'dark' ? 'text-white' : 'opacity-100'}>{store.name}</strong>. Todos os direitos reservados.
           </div>

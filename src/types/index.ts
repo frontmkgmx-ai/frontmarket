@@ -14,6 +14,7 @@ export interface Store {
   ownerId: string;
   createdAt: string;
   settings?: StoreSettings;
+  customDomains?: string[];
 }
 
 export interface StoreSettings {
@@ -24,6 +25,7 @@ export interface StoreSettings {
   headerStyle?: string;
   footerStyle?: string;
   loadingStyle?: string;
+  pdpStyle?: string;
   contactEmail?: string;
   supportPhone?: string;
 }

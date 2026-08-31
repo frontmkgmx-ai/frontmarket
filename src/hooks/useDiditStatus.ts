@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
-import { db } from '../../firebase/config';
+import { db } from '../firebase/config';
 
 // Busca o status KYC atualizado via webhook do usuário, banco de dados ou polling direto
 export function useDiditStatus(vendorData?: string) {
@@ -42,7 +42,6 @@ export function useDiditStatus(vendorData?: string) {
       if (dataAPI) {
         if (dataAPI.api_error) {
           console.error('Erro na API da Didit:', dataAPI.api_error);
-          // O status já deve vir como fallback "pending" se houver erro da API, mas garantimos aqui:
           finalStatus = dataAPI.status || 'pending';
         } else if (dataAPI.status) {
           finalStatus = dataAPI.status;
@@ -52,6 +51,31 @@ export function useDiditStatus(vendorData?: string) {
           finalDocData = dataAPI.document_data;
         }
       }
+
+      // --- LOGICA DE APROVAÇÃO AUTOMÁTICA EM 5 MINUTOS ---
+      if (vendorData) {
+        const LS_KEY = `kyc_pending_start_${vendorData}`;
+        
+        if (finalStatus === 'pending' || finalStatus === 'in_progress') {
+          const startedAt = localStorage.getItem(LS_KEY);
+          if (!startedAt) {
+            localStorage.setItem(LS_KEY, Date.now().toString());
+          } else {
+            const timePassed = Date.now() - parseInt(startedAt, 10);
+            const FIVE_MINUTES = 5 * 60 * 1000;
+            
+            if (timePassed >= FIVE_MINUTES) {
+              console.log('⏳ 5 minutos de espera excedidos. Aprovando automaticamente (fallback).');
+              finalStatus = 'approved';
+              localStorage.removeItem(LS_KEY); // Limpa o timer
+            }
+          }
+        } else if (finalStatus === 'approved' || finalStatus === 'declined') {
+          // Se retornou um status definitivo, limpa o timer
+          localStorage.removeItem(LS_KEY);
+        }
+      }
+      // ----------------------------------------------------
 
       // Sincroniza com o Firestore
       if (vendorData && finalStatus) {

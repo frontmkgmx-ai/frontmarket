@@ -4,12 +4,13 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { Store, Product } from '../../types';
 import { formatCurrency } from '../../lib/utils';
-import { ArrowLeft, ShoppingCart, Check, RefreshCw } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, Check, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCartStore } from '../../store/cartStore';
 import { FastCache } from '../../lib/cache';
 import { withTimeout } from '../../lib/asyncGuard';
 import { SmartLoader } from '../../components/SmartLoader';
 import { ThemeConfig } from '../../lib/themes';
+import { AdvancedVideoPlayer } from '../../components/AdvancedVideoPlayer';
 
 export function ProductDetail() {
   const { store, currentTheme } = useOutletContext<{ store: Store; currentTheme: ThemeConfig }>();
@@ -26,6 +27,7 @@ export function ProductDetail() {
   const { addItem } = useCartStore();
   const [added, setAdded] = useState(false);
   const navigate = useNavigate();
+  const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
 
   const loadProduct = async () => {
     if (!store || !productSlug) return;
@@ -157,48 +159,155 @@ export function ProductDetail() {
   }
 
   const isOutOfStock = !product.isDigital && product.stock <= 0;
+  const pdpStyle = store.settings?.pdpStyle || 'default';
+  const themeColor = store.settings?.themeColor || '#4f46e5';
+
+  const getContainerLayout = () => {
+    switch (pdpStyle) {
+      case 'centered':
+        return 'flex flex-col items-center max-w-4xl mx-auto text-center';
+      case 'compact':
+        return 'grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-6 max-w-5xl mx-auto';
+      case 'fullwidth':
+        return 'grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 w-full max-w-none';
+      case 'split':
+        return 'grid grid-cols-1 lg:grid-cols-2 gap-0 border border-slate-200/80 rounded-3xl overflow-hidden bg-white shadow-sm';
+      case 'modern':
+        return 'grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 p-4 sm:p-8 bg-white/80 backdrop-blur-sm rounded-3xl border border-slate-200/80 shadow-md';
+      case 'minimalist':
+        return 'grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16 max-w-6xl mx-auto';
+      case 'classic':
+        return 'grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 p-6 bg-slate-50/50 rounded-2xl border-2 border-slate-200';
+      case 'overlay':
+        return 'grid grid-cols-1 lg:grid-cols-2 gap-8 relative';
+      case 'gallery':
+        return 'grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12';
+      default:
+        return 'grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-start';
+    }
+  };
 
   return (
-    <div className="max-w-7xl mx-auto py-4 sm:py-8 px-2 sm:px-6">
+    <div className={`max-w-7xl mx-auto py-4 sm:py-8 px-2 sm:px-6 ${pdpStyle === 'minimalist' ? 'border-0' : ''}`}>
       <Link 
         to={`/${store.slug}`} 
-        className="inline-flex items-center text-xs sm:text-sm font-semibold text-slate-500 hover:opacity-100 mb-6 transition-colors"
+        className="inline-flex items-center text-xs sm:text-sm font-semibold opacity-70 hover:opacity-100 mb-6 transition-opacity"
       >
         <ArrowLeft className="w-4 h-4 mr-1.5" />
         Voltar para a vitrine
       </Link>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-start">
-        {/* Imagem do Produto */}
-        <div className="w-full">
-          <div className="aspect-square rounded-2xl sm:rounded-3xl overflow-hidden bg-opacity-10 border border-slate-200/80 shadow-xs relative">
-            {product.images && product.images.length > 0 ? (
-              <img
-                src={product.images[0]}
-                alt={product.name}
-                className="w-full h-full object-cover object-center"
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center opacity-60 text-sm font-medium">
-                Sem Imagem Cadastrada
-              </div>
-            )}
+      <div className={getContainerLayout()}>
+        {/* Imagem / Video do Produto (Carrossel) */}
+        <div className={`w-full ${pdpStyle === 'centered' ? 'max-w-md mb-6' : ''}`}>
+          <div className={`aspect-square overflow-hidden bg-slate-100 border border-slate-200/80 shadow-xs relative group ${pdpStyle === 'split' ? 'rounded-none border-0' : 'rounded-2xl sm:rounded-3xl'}`}>
             {product.isDigital && (
-              <span className="absolute top-3 left-3 bg-indigo-600/90 text-white text-xs font-bold px-2.5 py-1 rounded-lg backdrop-blur-xs">
+              <span className="absolute top-3 left-3 bg-indigo-600/90 text-white text-xs font-bold px-2.5 py-1 rounded-lg backdrop-blur-xs z-20">
                 Produto Digital
               </span>
             )}
+            
+            {(() => {
+              const mediaItems: { type: 'image' | 'video', url: string }[] = [];
+              if (product.images && product.images.length > 0) {
+                product.images.forEach(img => mediaItems.push({ type: 'image', url: img }));
+              }
+              if (product.videoUrl) {
+                mediaItems.push({ type: 'video', url: product.videoUrl });
+              }
+              
+              if (mediaItems.length === 0) {
+                return (
+                  <div className="w-full h-full flex items-center justify-center opacity-60 text-sm font-medium">
+                    Sem Imagem Cadastrada
+                  </div>
+                );
+              }
+
+              const handlePrev = () => {
+                setCurrentMediaIndex(prev => prev === 0 ? mediaItems.length - 1 : prev - 1);
+              };
+              
+              const handleNext = () => {
+                setCurrentMediaIndex(prev => prev === mediaItems.length - 1 ? 0 : prev + 1);
+              };
+
+              return (
+                <>
+                  <div 
+                    className="w-full h-full flex transition-transform duration-300 ease-in-out" 
+                    style={{ transform: `translateX(-${currentMediaIndex * 100}%)` }}
+                  >
+                    {mediaItems.map((item, index) => (
+                      <div key={index} className="w-full h-full flex-shrink-0 relative">
+                        {item.type === 'image' ? (
+                          <img
+                            src={item.url}
+                            alt={`${product.name} ${index + 1}`}
+                            className="w-full h-full object-cover object-center"
+                          />
+                        ) : (
+                          <AdvancedVideoPlayer url={item.url} />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {mediaItems.length > 1 && (
+                    <>
+                      <button 
+                        onClick={handlePrev}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/80 hover:bg-white text-slate-800 rounded-full flex items-center justify-center shadow-md opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                      >
+                        <ChevronLeft className="w-6 h-6" />
+                      </button>
+                      <button 
+                        onClick={handleNext}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/80 hover:bg-white text-slate-800 rounded-full flex items-center justify-center shadow-md opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                      >
+                        <ChevronRight className="w-6 h-6" />
+                      </button>
+                      
+                      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+                        {mediaItems.map((_, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setCurrentMediaIndex(idx)}
+                            className={`w-2 h-2 rounded-full transition-all ${currentMediaIndex === idx ? 'bg-indigo-600 w-4' : 'bg-white/60 hover:bg-white'}`}
+                          />
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </>
+              );
+            })()}
           </div>
+
+          {/* Galeria de Miniaturas para estilo Gallery */}
+          {pdpStyle === 'gallery' && product.images && product.images.length > 1 && (
+            <div className="flex gap-2 mt-3 overflow-x-auto pb-2">
+              {product.images.map((img, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setCurrentMediaIndex(idx)}
+                  className={`w-16 h-16 shrink-0 rounded-xl overflow-hidden border-2 transition-all ${currentMediaIndex === idx ? 'border-indigo-600 shadow-sm' : 'border-slate-200 opacity-60 hover:opacity-100'}`}
+                >
+                  <img src={img} alt="Thumbnail" className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Informações e Compra */}
-        <div className="flex flex-col">
+        <div className={`flex flex-col ${pdpStyle === 'split' ? 'p-6 sm:p-10 justify-center' : ''} ${pdpStyle === 'centered' ? 'w-full' : ''}`}>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight opacity-100 mb-2">
             {product.name}
           </h1>
           
-          <div className="flex items-baseline gap-3 mb-6">
-            <span className="text-2xl sm:text-3xl font-black opacity-100">
+          <div className={`flex items-baseline gap-3 mb-6 ${pdpStyle === 'centered' ? 'justify-center' : ''}`}>
+            <span className="text-2xl sm:text-3xl font-black opacity-100" style={{ color: themeColor }}>
               {formatCurrency(product.price)}
             </span>
             {product.compareAtPrice && product.compareAtPrice > product.price && (
@@ -215,35 +324,8 @@ export function ProductDetail() {
             </p>
           </div>
 
-          {product.videoUrl && (
-            <div className="mb-8">
-              <h4 className="text-xs font-bold uppercase tracking-wider opacity-60 mb-2">Vídeo do Produto</h4>
-              <div className="aspect-video rounded-xl overflow-hidden bg-opacity-10 border border-slate-200">
-                {product.videoUrl.includes('youtube.com') || product.videoUrl.includes('youtu.be') ? (
-                  <iframe
-                    className="w-full h-full"
-                    src={`https://www.youtube.com/embed/${
-                      product.videoUrl.includes('youtu.be') 
-                        ? product.videoUrl.split('youtu.be/')[1].split('?')[0] 
-                        : product.videoUrl.split('v=')[1]?.split('&')[0] || ''
-                    }`}
-                    title="Vídeo do Produto"
-                    frameBorder="0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  />
-                ) : (
-                  <video controls className="w-full h-full object-cover">
-                    <source src={product.videoUrl} />
-                    Seu navegador não suporta vídeos.
-                  </video>
-                )}
-              </div>
-            </div>
-          )}
-
           {/* Botões de Ação */}
-          <div className="space-y-3 pt-6 border-t border-slate-200">
+          <div className="space-y-3 pt-6 border-t border-slate-200/80">
             <button
               onClick={handleAddToCart}
               disabled={isOutOfStock}
@@ -271,10 +353,11 @@ export function ProductDetail() {
             <button
               onClick={handleBuyNow}
               disabled={isOutOfStock}
+              style={!isOutOfStock ? { backgroundColor: themeColor } : {}}
               className={`w-full flex items-center justify-center py-3.5 px-6 rounded-xl font-bold text-sm text-white transition-all cursor-pointer shadow-md active:scale-98
                 ${isOutOfStock 
-                  ? 'bg-slate-300 cursor-not-allowed'
-                  : 'bg-indigo-600 hover:bg-indigo-700 hover:shadow-indigo-600/20'
+                  ? 'bg-slate-300 cursor-not-allowed' 
+                  : 'hover:opacity-95 shadow-indigo-600/20'
                 }`}
             >
               Comprar Agora
@@ -282,13 +365,13 @@ export function ProductDetail() {
           </div>
 
           {/* Metadados */}
-          <div className="mt-6 pt-4 border-t border-slate-100 grid grid-cols-2 gap-4 text-xs text-slate-500">
+          <div className="mt-6 pt-4 border-t border-slate-100 grid grid-cols-2 gap-4 text-xs opacity-70">
             <div>
-              <span className="font-semibold text-slate-700">SKU: </span>
+              <span className="font-semibold">SKU: </span>
               {product.sku || 'Automático'}
             </div>
             <div>
-              <span className="font-semibold text-slate-700">Disponibilidade: </span>
+              <span className="font-semibold">Disponibilidade: </span>
               {product.isDigital ? (
                 <span className="text-emerald-600 font-semibold">Envio Imediato</span>
               ) : product.stock > 0 ? (
