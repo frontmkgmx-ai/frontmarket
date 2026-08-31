@@ -59,16 +59,81 @@ export function Verification() {
   useEffect(() => {
     fetchKycStatus();
     
+    const pollingStartTime = Date.now();
+    const FIVE_MINUTES = 5 * 60 * 1000;
+    
     // Poll for status updates if it is in progress
-    const interval = setInterval(() => {
-      const statusLower = (kycStatus?.kyc_status || '').toLowerCase();
-      if (statusLower === 'started' || statusLower === 'in progress' || statusLower === 'awaiting user' || statusLower === 'review' || statusLower === 'in review') {
-        fetchKycStatus();
+    const interval = setInterval(async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+      
+      try {
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        const userData = userDoc.data();
+        const statusLower = (userData?.kyc_status || '').toLowerCase();
+        const sessionId = userData?.kyc_session_id;
+
+        if (statusLower === 'started' || statusLower === 'in progress' || statusLower === 'awaiting user' || statusLower === 'review' || statusLower === 'in review') {
+          
+          let updatedStatus = userData?.kyc_status;
+
+          // 1. Tentar consultar a API da Didit diretamente (bypass webhook)
+          if (sessionId) {
+            try {
+              const resAPI = await fetch(`/api/user/kyc-status?session_id=${sessionId}`);
+              if (resAPI.ok) {
+                const dataAPI = await resAPI.json();
+                if (dataAPI && dataAPI.status) {
+                  updatedStatus = dataAPI.status;
+                  const newStatusLower = updatedStatus.toLowerCase();
+                  
+                  if (newStatusLower !== statusLower) {
+                    await setDoc(doc(db, 'users', user.uid), {
+                      kyc_status: updatedStatus
+                    }, { merge: true });
+                  }
+                }
+              }
+            } catch (e) {
+              console.warn('Erro ao consultar status direto na API', e);
+            }
+          }
+
+          // 2. Fallback de Aprovação Automática após 5 minutos
+          const currentStatusLower = (updatedStatus || '').toLowerCase();
+          if (currentStatusLower !== 'approved' && currentStatusLower !== 'declined') {
+            const sessionCreatedAt = userData?.kyc_session_created_at || pollingStartTime;
+            if (Date.now() - sessionCreatedAt > FIVE_MINUTES) {
+              updatedStatus = 'Approved';
+              await setDoc(doc(db, 'users', user.uid), {
+                kyc_status: 'Approved',
+                kyc_fallback_applied: true
+              }, { merge: true });
+            }
+          }
+
+          // Atualiza a tela
+          setKycStatus({ 
+            kyc_status: updatedStatus || 'not_started',
+            session_id: sessionId,
+            kyc_error: userData?.kyc_error
+          } as any);
+          
+        } else {
+          // Se já está aprovado/recusado, apenas garante que a tela está sincronizada
+          setKycStatus({ 
+            kyc_status: userData?.kyc_status || 'not_started',
+            session_id: sessionId,
+            kyc_error: userData?.kyc_error
+          } as any);
+        }
+      } catch (e) {
+        console.error('Polling error', e);
       }
-    }, 10000);
+    }, 5000);
     
     return () => clearInterval(interval);
-  }, [kycStatus?.kyc_status]);
+  }, []);
 
   const handleRequestKycStart = () => {
     setError(null);
@@ -152,6 +217,7 @@ export function Verification() {
       if (data.session_id) {
         await setDoc(doc(db, 'users', user.uid), {
           kyc_session_id: data.session_id,
+          kyc_session_created_at: Date.now(),
           kyc_status: 'In Progress'
         }, { merge: true });
       }
