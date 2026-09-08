@@ -248,7 +248,7 @@ export function StorefrontLayout() {
                store.name
             )}
           </Link>
-          
+
           {/* User Controls & Cart */}
           <div className={`flex items-center gap-1.5 sm:gap-4 shrink-0 ${headerStyle === 'centered' ? 'w-full sm:w-auto justify-center mt-2 sm:mt-0' : ''}`}>
             {customer && customer.storeId === store.id ? (

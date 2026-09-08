@@ -19,7 +19,10 @@ export function Dashboard() {
       totalCustomers: 0
     };
   });
-  
+
+  const [invictusBalance, setInvictusBalance] = useState<{ available: number; blocked?: number } | null>(null);
+  const [balanceLoading, setBalanceLoading] = useState(false);
+
   const [loading, setLoading] = useState<boolean>(() => {
     return cacheKey ? !FastCache.get(cacheKey) : true;
   });
@@ -29,6 +32,27 @@ export function Dashboard() {
       setLoading(false);
       return;
     }
+
+    const fetchBalance = async () => {
+      try {
+        setBalanceLoading(true);
+        const res = await fetch(`/api/gateways/invictuspay/${activeStore.id}/balance`, {
+          headers: {
+             'Authorization': `Bearer ${await useAuthStore.getState().user?.getIdToken()}`
+          }
+        });
+        if (res.ok) {
+           const data = await res.json();
+           setInvictusBalance(data.balance);
+        }
+      } catch (err) {
+        // Ignora caso gateway não configurado
+      } finally {
+        setBalanceLoading(false);
+      }
+    };
+    
+    fetchBalance();
 
     // Trava de segurança anti-loading infinito (2.5s máximo)
     const safetyTimer = setTimeout(() => {
@@ -93,6 +117,16 @@ export function Dashboard() {
     { name: 'Produtos', value: stats.totalProducts, icon: Package, color: 'text-indigo-600', bg: 'bg-indigo-50' },
     { name: 'Clientes', value: stats.totalCustomers, icon: Users, color: 'text-purple-600', bg: 'bg-purple-50' },
   ];
+
+  if (invictusBalance !== null) {
+      statCards.unshift({
+         name: 'Saldo InvictusPay',
+         value: formatCurrency((invictusBalance.available || 0) / 100),
+         icon: DollarSign,
+         color: 'text-amber-600',
+         bg: 'bg-amber-50'
+      });
+  }
 
   if (loading) {
     return (

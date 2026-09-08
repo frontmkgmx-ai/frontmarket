@@ -81,16 +81,13 @@ export function Checkout() {
     setLoading(true);
 
     try {
-      const orderData = {
+      const orderPayload = {
         storeId: store.id,
         customerId: customer.id,
         customerUsername: customer.username,
         items,
         subtotal: total,
-        shipping: 0,
-        discount: 0,
         total,
-        status: 'pending',
         customer: {
           name: customerName || customer.name,
           email: customerEmail || customer.email || '',
@@ -105,32 +102,28 @@ export function Checkout() {
           neighborhood,
           city,
           state
-        },
-        paymentMethod: 'pix',
-        createdAt: serverTimestamp()
+        }
       };
 
-      // 1. Cria pedido na subcoleção de pedidos da loja
-      const orderRef = await addDoc(collection(db, 'stores', store.id, 'orders'), orderData);
+      const res = await fetch('/api/checkout/invictuspay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderPayload)
+      });
+
+      const data = await res.json();
       
-      // 2. Atualiza contador de pedidos do cliente na loja
-      try {
-        const customerRef = doc(db, 'stores', store.id, 'customers', customer.id);
-        await updateDoc(customerRef, {
-          totalOrders: increment(1),
-          totalSpent: increment(total),
-          lastOrderAt: serverTimestamp()
-        });
-      } catch (custErr) {
-        console.warn("Aviso ao atualizar métricas do cliente:", custErr);
+      if (!res.ok) {
+        throw new Error(data.error || 'Falha ao processar pagamento.');
       }
 
-      setOrderId(orderRef.id);
+      setOrderId(data.orderId);
+      
       clearCart();
       setSuccess(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao finalizar compra:", error);
-      alert('Erro ao processar pedido. Tente novamente.');
+      alert(error.message || 'Erro ao processar pedido. Tente novamente.');
     } finally {
       setLoading(false);
     }

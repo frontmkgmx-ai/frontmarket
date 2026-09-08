@@ -1,4 +1,10 @@
+const fs = require('fs');
+let code = fs.readFileSync('src/pages/admin/PaymentGateways.tsx', 'utf8');
 
+// Replace Gateway config blocks
+// I'll rewrite the component entirely since it requires adding lots of state variables for all gateways.
+
+const newCode = `
 import { useState, useEffect } from 'react';
 import { CreditCard, CheckCircle2, DollarSign, Key, Save, Loader2, Link as LinkIcon, ShieldCheck, X } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
@@ -74,8 +80,8 @@ export function PaymentGateways() {
       const newConfigs: any = {};
       
       for (const gw of gateways) {
-          const res = await fetch(`/api/gateways/${gw}/${activeStore?.id}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+          const res = await fetch(\`/api/gateways/\${gw}/\${activeStore?.id}\`, {
+            headers: { 'Authorization': \`Bearer \${token}\` }
           });
           if (res.ok) {
               newConfigs[gw] = await res.json();
@@ -126,11 +132,11 @@ export function PaymentGateways() {
           ...conf.formData
       };
 
-      const res = await fetch(`/api/gateways/${gatewayId}`, {
+      const res = await fetch(\`/api/gateways/\${gatewayId}\`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${await useAuthStore.getState().user?.getIdToken()}`
+          'Authorization': \`Bearer \${await useAuthStore.getState().user?.getIdToken()}\`
         },
         body: JSON.stringify(payload)
       });
@@ -155,11 +161,11 @@ export function PaymentGateways() {
           ...conf.formData
       };
 
-      const res = await fetch(`/api/gateways/${gatewayId}/test`, {
+      const res = await fetch(\`/api/gateways/\${gatewayId}/test\`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${await useAuthStore.getState().user?.getIdToken()}`
+          'Authorization': \`Bearer \${await useAuthStore.getState().user?.getIdToken()}\`
         },
         body: JSON.stringify(payload)
       });
@@ -328,18 +334,18 @@ export function PaymentGateways() {
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
-                id={`status-${gateway.id}`}
+                id={\`status-\${gateway.id}\`}
                 checked={status}
                 onChange={(e) => handleStatusChange(gateway.id, e.target.checked)}
                 className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
               />
-              <label htmlFor={`status-${gateway.id}`} className="text-sm font-medium text-slate-700">
+              <label htmlFor={\`status-\${gateway.id}\`} className="text-sm font-medium text-slate-700">
                 Ativar gateway na loja
               </label>
             </div>
 
             {testResult && (
-              <div className={`p-3 rounded-lg text-sm font-medium flex items-center gap-2 ${testResult.success ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+              <div className={\`p-3 rounded-lg text-sm font-medium flex items-center gap-2 \${testResult.success ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}\`}>
                 {testResult.success ? <CheckCircle2 className="w-4 h-4" /> : <X className="w-4 h-4" />}
                 {testResult.success ? 'Conectado com sucesso!' : testResult.error}
               </div>
@@ -389,7 +395,7 @@ export function PaymentGateways() {
           const isConnected = !!(conf.hasKey || conf.hasToken || conf.hasAccountId || conf.infiniteHandle);
 
           return (
-            <div key={gateway.id} className={`bg-white rounded-xl border ${isActive ? 'border-indigo-500 ring-1 ring-indigo-500 shadow-md' : 'border-slate-200 shadow-sm'} overflow-hidden transition-all flex flex-col`}>
+            <div key={gateway.id} className={\`bg-white rounded-xl border \${isActive ? 'border-indigo-500 ring-1 ring-indigo-500 shadow-md' : 'border-slate-200 shadow-sm'} overflow-hidden transition-all flex flex-col\`}>
               <div className="p-6 flex-1">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-4">
@@ -464,3 +470,5 @@ export function PaymentGateways() {
     </div>
   );
 }
+`;
+fs.writeFileSync('src/pages/admin/PaymentGateways.tsx', newCode);

@@ -5,6 +5,12 @@ import { createServer as createViteServer } from 'vite';
 import { initializeApp, App, cert } from 'firebase-admin/app';
 import { getAuth as getFirebaseAuth } from 'firebase-admin/auth';
 import { getFirestore as getFirebaseFirestore, FieldValue } from 'firebase-admin/firestore';
+import { setupInvictusPayRoutes } from './server-invictuspay.js';
+import { setupMercadoPagoRoutes } from './server-mercadopago.js';
+import { setupStripeRoutes } from './server-stripe.js';
+import { setupPagBankRoutes } from './server-pagbank.js';
+import { setupInfinitePayRoutes } from './server-infinitepay.js';
+
 
 // Lazy Firebase Admin Initialization
 let firebaseAdminApp: App | null = null;
@@ -109,6 +115,14 @@ async function startServer() {
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok' });
   });
+
+  // Setup InvictusPay Routes
+  setupInvictusPayRoutes(app, authMiddleware, getFirestore);
+  setupMercadoPagoRoutes(app, authMiddleware, getFirestore);
+  setupStripeRoutes(app, authMiddleware, getFirestore);
+  setupPagBankRoutes(app, authMiddleware, getFirestore);
+  setupInfinitePayRoutes(app, authMiddleware, getFirestore);
+
 
   // --- DIDIT KYC ENDPOINTS ---
 
