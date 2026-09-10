@@ -1,8 +1,7 @@
 import React, { useState, useEffect, FormEvent, ChangeEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { doc, getDoc, collection, addDoc, updateDoc, serverTimestamp, getDocs } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../../firebase/config';
+import { db } from '../../firebase/config';
 import { useAuthStore } from '../../store/authStore';
 import { Category } from '../../types';
 import { FastCache } from '../../lib/cache';
@@ -10,6 +9,7 @@ import { generateSlug } from '../../lib/utils';
 import { safeWrite } from '../../lib/asyncGuard';
 import { ArrowLeft, Upload, X } from 'lucide-react';
 import { Link } from 'react-router';
+import { uploadFileToStreamx } from '../../lib/streamx';
 
 export function ProductForm() {
   const { id } = useParams<{ id: string }>();
@@ -79,9 +79,7 @@ export function ProductForm() {
     const file = e.target.files[0];
     setUploadingImage(true);
     try {
-      const storageRef = ref(storage, `stores/${activeStore.id}/products/${Date.now()}_${file.name}`);
-      const uploadTask = await uploadBytesResumable(storageRef, file);
-      const downloadURL = await getDownloadURL(uploadTask.ref);
+      const downloadURL = await uploadFileToStreamx(file);
       setImages(prev => [...prev, downloadURL]);
     } catch (err) {
       console.error(err);

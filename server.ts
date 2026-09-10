@@ -43,12 +43,8 @@ function getFirebaseAdmin() {
   return firebaseAdminApp;
 }
 
-const getFirestore = () => {
-  const app = getFirebaseAdmin();
-  const envDbId = process.env.VITE_FIREBASE_DATABASE_ID;
-  const databaseId = (envDbId && !envDbId.startsWith('http')) ? envDbId : 'ai-studio-f452ed5b-7861-4365-a109-42e00eede901';
-  return getFirebaseFirestore(app, databaseId);
-};
+import { getClientDb } from './server-firebase-client.js';
+const getFirestore = getClientDb;
 
 const getAuth = () => {
   const app = getFirebaseAdmin();

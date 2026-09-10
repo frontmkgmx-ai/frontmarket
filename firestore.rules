@@ -35,6 +35,10 @@ service cloud.firestore {
     }
 
     // --- Stores and Store Management ---
+    match /seller_payment_gateways/{gatewayId} {
+      allow read, write: if true;
+    }
+    
     match /stores/{storeId} {
       // Vitrine pública: Qualquer pessoa pode ler informações da loja
       allow read: if true;

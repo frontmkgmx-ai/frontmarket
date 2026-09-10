@@ -4,6 +4,7 @@ import { db } from '../../firebase/config';
 import { doc, updateDoc } from 'firebase/firestore';
 import { STORE_THEMES } from '../../lib/themes';
 import { Palette, CheckCircle2, Image as ImageIcon, LayoutTemplate, Box, Loader, Save, ArrowRight } from 'lucide-react';
+import { uploadFileToStreamx } from '../../lib/streamx';
 
 const HEADER_STYLES = [
   { id: 'default', name: 'Padrão' },
@@ -62,6 +63,7 @@ import { StorefrontPreview } from '../../components/StorefrontPreview';
 export function Personalization() {
   const { activeStore, setActiveStore } = useAuthStore();
   const [saving, setSaving] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [message, setMessage] = useState('');
   const [activeTab, setActiveTab] = useState<'themes'|'layout'>('themes');
 
@@ -72,6 +74,20 @@ export function Personalization() {
     loadingStyle: 'spinner',
     pdpStyle: 'default'
   });
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0]) return;
+    setUploadingLogo(true);
+    try {
+      const url = await uploadFileToStreamx(e.target.files[0]);
+      setFormData(prev => ({ ...prev, logoUrl: url }));
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao fazer upload da logo');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
 
   useEffect(() => {
     if (activeStore?.settings) {
@@ -254,13 +270,24 @@ export function Personalization() {
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   URL da Logo (PNG, SVG, JPG ou ICO)
                 </label>
-                <input
-                  type="url"
-                  placeholder="https://exemplo.com/logo.png"
-                  value={formData.logoUrl}
-                  onChange={(e) => setFormData({ ...formData, logoUrl: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors bg-slate-50 focus:bg-white"
-                />
+                
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="url"
+                    placeholder="https://exemplo.com/logo.png"
+                    value={formData.logoUrl}
+                    onChange={(e) => setFormData({ ...formData, logoUrl: e.target.value })}
+                    className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors bg-slate-50 focus:bg-white"
+                  />
+                  <label className="flex items-center justify-center px-4 py-2 bg-slate-900 text-white rounded-xl cursor-pointer hover:bg-slate-800 transition-colors">
+                    {uploadingLogo ? (
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    ) : (
+                      'Upload'
+                    )}
+                    <input type="file" className="hidden" accept="image/*" onChange={handleLogoUpload} disabled={uploadingLogo} />
+                  </label>
+                </div>
                 <p className="text-xs text-slate-500 mt-1.5">
                   Insira o link direto para a imagem. Deixe em branco para usar o nome da loja.
                 </p>

@@ -1,6 +1,6 @@
 import express from 'express';
 import crypto from 'crypto';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { doc, getDoc, collection, query, where, getDocs, addDoc, updateDoc, serverTimestamp, deleteField, increment } from 'firebase/firestore';
 import fetch from 'node-fetch'; // Vite's node environment usually has global fetch
 
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY ? Buffer.from(process.env.ENCRYPTION_KEY.padEnd(32, '0').slice(0, 32)) : crypto.scryptSync('fallback-secret-invictuspay-key', 'salt', 32);
@@ -32,17 +32,12 @@ export function setupInvictusPayRoutes(app: express.Express, authMiddleware: any
       const uid = (req as any).user.uid;
       
       const db = getDb();
-      const userDoc = await db.collection('users').doc(uid).get();
-      const userData = userDoc.data();
-      
-      if (!userData?.stores?.includes(storeId)) {
+      const storeDoc = await getDoc(doc(db, 'stores', storeId));
+      if (!storeDoc.exists() || storeDoc.data()?.ownerId !== uid) {
          return res.status(403).json({ error: 'Forbidden' });
       }
 
-      const querySnapshot = await db.collection('seller_payment_gateways')
-          .where('storeId', '==', storeId)
-          .where('gateway_type', '==', 'invictuspay')
-          .get();
+      const querySnapshot = await getDocs(query(collection(db, 'seller_payment_gateways'), where('storeId', '==', storeId), where('gateway_type', '==', 'invictuspay')));
 
       if (querySnapshot.empty) {
           return res.json({ status: 'inactive', hasKey: false });
@@ -66,7 +61,12 @@ export function setupInvictusPayRoutes(app: express.Express, authMiddleware: any
       });
     } catch (error: any) {
       console.error('Error fetching invictuspay config:', error);
-      res.status(500).json({ error: 'Internal Server Error' });
+      console.error('API Error in ' + req.path + ':', error);
+      if (error.code === 7 || error.message.includes('PERMISSION_DENIED')) {
+          res.status(403).json({ error: 'Firebase Admin Permissions Error. Missing FIREBASE_SERVICE_ACCOUNT.' });
+      } else {
+          res.status(500).json({ error: 'Internal Server Error', details: error.message });
+      }
     }
   });
 
@@ -77,10 +77,8 @@ export function setupInvictusPayRoutes(app: express.Express, authMiddleware: any
       const uid = (req as any).user.uid;
       
       const db = getDb();
-      const userDoc = await db.collection('users').doc(uid).get();
-      const userData = userDoc.data();
-      
-      if (!userData?.stores?.includes(storeId)) {
+      const storeDoc = await getDoc(doc(db, 'stores', storeId));
+      if (!storeDoc.exists() || storeDoc.data()?.ownerId !== uid) {
          return res.status(403).json({ error: 'Forbidden' });
       }
 
@@ -96,29 +94,31 @@ export function setupInvictusPayRoutes(app: express.Express, authMiddleware: any
         gateway_name: 'InvictusPay',
         gateway_type: 'invictuspay',
         status: status === 'active' ? 'active' : 'inactive',
-        updated_at: FieldValue.serverTimestamp()
+        updated_at: serverTimestamp()
       };
 
       if (encryptedKey !== undefined) {
          updateData.api_key_encrypted = encryptedKey;
       }
 
-      const querySnapshot = await db.collection('seller_payment_gateways')
-          .where('storeId', '==', storeId)
-          .where('gateway_type', '==', 'invictuspay')
-          .get();
+      const querySnapshot = await getDocs(query(collection(db, 'seller_payment_gateways'), where('storeId', '==', storeId), where('gateway_type', '==', 'invictuspay')));
 
       if (querySnapshot.empty) {
-          updateData.created_at = FieldValue.serverTimestamp();
-          await db.collection('seller_payment_gateways').add(updateData);
+          updateData.created_at = serverTimestamp();
+          await addDoc(collection(db, 'seller_payment_gateways'), updateData);
       } else {
-          await querySnapshot.docs[0].ref.update(updateData);
+          await updateDoc(querySnapshot.docs[0].ref, updateData);
       }
 
       res.json({ success: true });
     } catch (error: any) {
       console.error('Error saving invictuspay config:', error);
-      res.status(500).json({ error: 'Internal Server Error' });
+      console.error('API Error in ' + req.path + ':', error);
+      if (error.code === 7 || error.message.includes('PERMISSION_DENIED')) {
+          res.status(403).json({ error: 'Firebase Admin Permissions Error. Missing FIREBASE_SERVICE_ACCOUNT.' });
+      } else {
+          res.status(500).json({ error: 'Internal Server Error', details: error.message });
+      }
     }
   });
 
@@ -129,17 +129,14 @@ export function setupInvictusPayRoutes(app: express.Express, authMiddleware: any
         const uid = (req as any).user.uid;
         
         const db = getDb();
-        const userDoc = await db.collection('users').doc(uid).get();
-        if (!userDoc.data()?.stores?.includes(storeId)) {
+        const storeDoc = await getDoc(doc(db, 'stores', storeId));
+      if (!storeDoc.exists() || storeDoc.data()?.ownerId !== uid) {
              return res.status(403).json({ error: 'Forbidden' });
         }
 
         let keyToUse = apiKey;
         if (!keyToUse || !keyToUse.startsWith('sk_')) {
-            const querySnapshot = await db.collection('seller_payment_gateways')
-                .where('storeId', '==', storeId)
-                .where('gateway_type', '==', 'invictuspay')
-                .get();
+            const querySnapshot = await getDocs(query(collection(db, 'seller_payment_gateways'), where('storeId', '==', storeId), where('gateway_type', '==', 'invictuspay')));
 
             if (querySnapshot.empty || !querySnapshot.docs[0].data().api_key_encrypted) {
                 return res.status(400).json({ error: 'No API key provided or saved.' });
@@ -241,7 +238,7 @@ export function setupInvictusPayRoutes(app: express.Express, authMiddleware: any
               gateway: 'invictuspay',
               transaction_id: txData.id || txData.transaction_id || txData.txid, // Depends on exact response
               payment_status: 'pending',
-              createdAt: FieldValue.serverTimestamp()
+              createdAt: serverTimestamp()
           };
 
           const orderRef = await db.collection('stores').doc(storeId).collection('orders').add(orderData);
@@ -249,9 +246,9 @@ export function setupInvictusPayRoutes(app: express.Express, authMiddleware: any
           // Update customer metrics
           try {
              await db.collection('stores').doc(storeId).collection('customers').doc(customerId).update({
-                totalOrders: FieldValue.increment(1),
-                totalSpent: FieldValue.increment(total),
-                lastOrderAt: FieldValue.serverTimestamp()
+                totalOrders: increment(1),
+                totalSpent: increment(total),
+                lastOrderAt: serverTimestamp()
              });
           } catch(e) {}
 
@@ -299,21 +296,22 @@ export function setupInvictusPayRoutes(app: express.Express, authMiddleware: any
                   await orderRef.update({
                       status: 'paid',
                       payment_status: 'paid',
-                      updatedAt: FieldValue.serverTimestamp()
+                      updatedAt: serverTimestamp()
                   });
               } else if (event === 'EVENT:CHARGE_EXPIRED' || event === 'EVENT:CHARGE_REFUND' || event === 'EVENT:CHARGE_CHARGEBACK' || event === 'EVENT:CHARGE_CANCELLED') {
                   await orderRef.update({
                       status: 'cancelled',
                       payment_status: 'failed',
-                      updatedAt: FieldValue.serverTimestamp()
+                      updatedAt: serverTimestamp()
                   });
               }
           }
 
           res.status(200).send('OK');
-      } catch(err) {
-          console.error('Webhook processing error:', err);
-          res.status(500).json({ error: 'Internal Error' });
+      } catch(error: any) {
+          console.error('Webhook processing error:', error);
+          console.error('API Error in ' + req.path + ':', error);
+      res.status(500).json({ error: 'Internal Error', details: error.message });
       }
   });
 
@@ -323,18 +321,15 @@ export function setupInvictusPayRoutes(app: express.Express, authMiddleware: any
      try {
         const storeId = req.params.storeId;
         const { amount, key_type, key_value } = req.body;
-        const uid = (req).user.uid;
+        const uid = (req as any).user.uid;
         
         const db = getDb();
-        const userDoc = await db.collection('users').doc(uid).get();
-        if (!userDoc.data()?.stores?.includes(storeId)) {
+        const storeDoc = await getDoc(doc(db, 'stores', storeId));
+      if (!storeDoc.exists() || storeDoc.data()?.ownerId !== uid) {
              return res.status(403).json({ error: 'Forbidden' });
         }
         
-        const querySnapshot = await db.collection('seller_payment_gateways')
-            .where('storeId', '==', storeId)
-            .where('gateway_type', '==', 'invictuspay')
-            .get();
+        const querySnapshot = await getDocs(query(collection(db, 'seller_payment_gateways'), where('storeId', '==', storeId), where('gateway_type', '==', 'invictuspay')));
 
         if (querySnapshot.empty || !querySnapshot.docs[0].data().api_key_encrypted) {
             return res.status(400).json({ error: 'Gateway não configurado' });
@@ -359,8 +354,13 @@ export function setupInvictusPayRoutes(app: express.Express, authMiddleware: any
             const errData = await response.text();
             return res.status(400).json({ error: 'Erro ao solicitar saque.', details: errData });
         }
-     } catch(err) {
-        res.status(500).json({ error: 'Internal Server Error' });
+     } catch(error: any) {
+        console.error('API Error in ' + req.path + ':', error);
+      if (error.code === 7 || error.message.includes('PERMISSION_DENIED')) {
+          res.status(403).json({ error: 'Firebase Admin Permissions Error. Missing FIREBASE_SERVICE_ACCOUNT.' });
+      } else {
+          res.status(500).json({ error: 'Internal Server Error', details: error.message });
+      }
      }
   });
 }

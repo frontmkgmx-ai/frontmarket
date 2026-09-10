@@ -1,5 +1,5 @@
 import express from 'express';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { doc, getDoc, collection, query, where, getDocs, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { encrypt, decrypt } from './server-invictuspay.js';
 
 export function setupStripeRoutes(app: express.Express, authMiddleware: any, getDb: any) {
@@ -9,16 +9,12 @@ export function setupStripeRoutes(app: express.Express, authMiddleware: any, get
       const { storeId } = req.params;
       const uid = (req as any).user.uid;
       const db = getDb();
-      const userDoc = await db.collection('users').doc(uid).get();
-      
-      if (!userDoc.data()?.stores?.includes(storeId)) {
+      const storeDoc = await getDoc(doc(db, 'stores', storeId));
+      if (!storeDoc.exists() || storeDoc.data()?.ownerId !== uid) {
          return res.status(403).json({ error: 'Forbidden' });
       }
 
-      const querySnapshot = await db.collection('seller_payment_gateways')
-          .where('storeId', '==', storeId)
-          .where('gateway_type', '==', 'stripe')
-          .get();
+      const querySnapshot = await getDocs(query(collection(db, 'seller_payment_gateways'), where('storeId', '==', storeId), where('gateway_type', '==', 'stripe')));
 
       if (querySnapshot.empty) {
           return res.json({ status: 'inactive', hasAccountId: false });
@@ -32,7 +28,12 @@ export function setupStripeRoutes(app: express.Express, authMiddleware: any, get
           publicKey: data.stripe_public_key || ''
       });
     } catch (error: any) {
-      res.status(500).json({ error: 'Internal Server Error' });
+      console.error('API Error in ' + req.path + ':', error);
+      if (error.code === 7 || error.message.includes('PERMISSION_DENIED')) {
+          res.status(403).json({ error: 'Firebase Admin Permissions Error. Missing FIREBASE_SERVICE_ACCOUNT.' });
+      } else {
+          res.status(500).json({ error: 'Internal Server Error', details: error.message });
+      }
     }
   });
 
@@ -41,9 +42,8 @@ export function setupStripeRoutes(app: express.Express, authMiddleware: any, get
       const { storeId, accountId, publicKey, status } = req.body;
       const uid = (req as any).user.uid;
       const db = getDb();
-      const userDoc = await db.collection('users').doc(uid).get();
-      
-      if (!userDoc.data()?.stores?.includes(storeId)) {
+      const storeDoc = await getDoc(doc(db, 'stores', storeId));
+      if (!storeDoc.exists() || storeDoc.data()?.ownerId !== uid) {
          return res.status(403).json({ error: 'Forbidden' });
       }
 
@@ -52,27 +52,29 @@ export function setupStripeRoutes(app: express.Express, authMiddleware: any, get
         gateway_name: 'Stripe Connect',
         gateway_type: 'stripe',
         status: status === 'active' ? 'active' : 'inactive',
-        updated_at: FieldValue.serverTimestamp()
+        updated_at: serverTimestamp()
       };
 
       if (accountId !== undefined) updateData.stripe_account_id = accountId;
       if (publicKey !== undefined) updateData.stripe_public_key = publicKey;
 
-      const querySnapshot = await db.collection('seller_payment_gateways')
-          .where('storeId', '==', storeId)
-          .where('gateway_type', '==', 'stripe')
-          .get();
+      const querySnapshot = await getDocs(query(collection(db, 'seller_payment_gateways'), where('storeId', '==', storeId), where('gateway_type', '==', 'stripe')));
 
       if (querySnapshot.empty) {
-          updateData.created_at = FieldValue.serverTimestamp();
-          await db.collection('seller_payment_gateways').add(updateData);
+          updateData.created_at = serverTimestamp();
+          await addDoc(collection(db, 'seller_payment_gateways'), updateData);
       } else {
-          await querySnapshot.docs[0].ref.update(updateData);
+          await updateDoc(querySnapshot.docs[0].ref, updateData);
       }
 
       res.json({ success: true });
     } catch (error: any) {
-      res.status(500).json({ error: 'Internal Server Error' });
+      console.error('API Error in ' + req.path + ':', error);
+      if (error.code === 7 || error.message.includes('PERMISSION_DENIED')) {
+          res.status(403).json({ error: 'Firebase Admin Permissions Error. Missing FIREBASE_SERVICE_ACCOUNT.' });
+      } else {
+          res.status(500).json({ error: 'Internal Server Error', details: error.message });
+      }
     }
   });
 
