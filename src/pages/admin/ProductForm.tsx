@@ -11,6 +11,8 @@ import { ArrowLeft, Upload, X } from 'lucide-react';
 import { Link } from 'react-router';
 import { uploadFileToStreamx, resolveStreamxImageUrl } from '../../lib/streamx';
 
+import { StreamxImage } from '../../components/StreamxImage';
+
 export function ProductForm() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -255,7 +257,7 @@ export function ProductForm() {
           <div className="flex flex-wrap gap-4 mb-4">
             {images.map((url, i) => (
               <div key={i} className="relative h-24 w-24 border rounded-md overflow-hidden bg-gray-50">
-                <img src={resolveStreamxImageUrl(url)} alt="" className="object-cover w-full h-full" />
+                <StreamxImage src={url} alt="" className="object-cover w-full h-full" />
                 <button
                   type="button"
                   onClick={() => removeImage(i)}

@@ -7,7 +7,9 @@ import { Trash2, Plus, Image as ImageIcon, Sparkles } from 'lucide-react';
 import { Link } from 'react-router';
 import { formatCurrency } from '../../lib/utils';
 import { FastCache } from '../../lib/cache';
-import { resolveStreamxImageUrl } from '../../lib/streamx';
+import { resolveStreamxImageUrl, deleteFileFromStreamx } from '../../lib/streamx';
+
+import { StreamxImage } from '../../components/StreamxImage';
 
 export function Products() {
   const { activeStore } = useAuthStore();
@@ -57,6 +59,23 @@ export function Products() {
   const handleDelete = async (id: string) => {
     if (!activeStore || !window.confirm('Tem certeza que deseja excluir este produto?')) return;
     try {
+      // Find the product to delete its images first
+      const product = products.find(p => p.id === id);
+      if (product && product.images && product.images.length > 0) {
+        // Delete images in parallel
+        await Promise.all(
+          product.images.map(async (img) => {
+            if (img) {
+              try {
+                await deleteFileFromStreamx(img);
+              } catch (e) {
+                console.error('Failed to delete image from bucket:', img, e);
+              }
+            }
+          })
+        );
+      }
+
       await deleteDoc(doc(db, 'stores', activeStore.id, 'products', id));
       FastCache.invalidate(`products_${activeStore.id}`);
       FastCache.invalidate(`admin_products_${activeStore.id}`);
@@ -148,7 +167,7 @@ export function Products() {
                       <div className="flex items-center">
                         <div className="h-10 w-10 shrink-0 bg-slate-100 rounded-lg overflow-hidden flex items-center justify-center border border-slate-200">
                           {product.images && product.images.length > 0 ? (
-                            <img className="h-10 w-10 object-cover" src={resolveStreamxImageUrl(product.images[0])} alt="" loading="lazy" />
+                            <StreamxImage className="h-10 w-10 object-cover" src={product.images[0]} alt="" loading="lazy" />
                           ) : (
                             <ImageIcon className="h-4 w-4 text-slate-400" />
                           )}
