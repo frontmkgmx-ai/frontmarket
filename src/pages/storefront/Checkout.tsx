@@ -32,6 +32,8 @@ export function Checkout() {
   const [success, setSuccess] = useState(false);
   const [orderId, setOrderId] = useState('');
   const [copiedPix, setCopiedPix] = useState(false);
+  const [pixCopyPaste, setPixCopyPaste] = useState("");
+  const [pixQrCodeBase64, setPixQrCodeBase64] = useState("");
 
   // Form State
   const [customerName, setCustomerName] = useState('');
@@ -105,7 +107,7 @@ export function Checkout() {
         }
       };
 
-      const res = await fetch('/api/checkout/invictuspay', {
+      const res = await fetch('/api/checkout/misticpay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(orderPayload)
@@ -118,6 +120,8 @@ export function Checkout() {
       }
 
       setOrderId(data.orderId);
+      if (data.copyPaste) setPixCopyPaste(data.copyPaste);
+      if (data.qrCodeBase64) setPixQrCodeBase64(data.qrCodeBase64);
       
       clearCart();
       setSuccess(true);
@@ -204,6 +208,13 @@ export function Checkout() {
               </span>
               <span className="text-xs font-bold text-emerald-700">{formatCurrency(total)}</span>
             </div>
+
+            {pixQrCodeBase64 && (
+              <div className="flex justify-center py-2">
+                <img src={pixQrCodeBase64} alt="QR Code PIX" className="w-40 h-40 sm:w-48 sm:h-48 rounded-lg shadow-sm" />
+              </div>
+            )}
+
             <p className="text-xs text-emerald-900/80 leading-relaxed">
               Copie o código PIX abaixo e pague pelo app do seu banco para confirmação imediata do pedido:
             </p>
@@ -211,12 +222,12 @@ export function Checkout() {
               <input
                 type="text"
                 readOnly
-                value={`00020126360014BR.GOV.BCB.PIX0114frontmk.pix@loja520400005303986540${total.toFixed(2)}5802BR5913${store.name.slice(0, 13)}6009SAOPAULO62070503***6304`}
+                value={pixCopyPaste || ""}
                 className="w-full bg-white border border-emerald-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-700 select-all"
               />
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(`00020126360014BR.GOV.BCB.PIX0114frontmk.pix@loja520400005303986540${total.toFixed(2)}5802BR5913${store.name.slice(0, 13)}6009SAOPAULO62070503***6304`);
+                  navigator.clipboard.writeText(pixCopyPaste || "");
                   setCopiedPix(true);
                   setTimeout(() => setCopiedPix(false), 2500);
                 }}

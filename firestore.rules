@@ -114,7 +114,15 @@ service cloud.firestore {
       match /activity/{activityId} {
         allow read, write: if isStoreMember(storeId);
       }
+
       
+      // 9. Saques (Withdrawals)
+      match /withdrawals/{withdrawalId} {
+        allow read: if isStoreMember(storeId);
+        allow create: if isStoreMember(storeId); // Allow via REST API backend proxy
+        allow update, delete: if isStoreMember(storeId); // Allow store owner to cancel
+      }
+
       // Fallback seguro para qualquer outra subcoleção futura
       match /{allSubcollections=**} {
         allow read: if true;

@@ -20,7 +20,7 @@ export function Dashboard() {
     };
   });
 
-  const [invictusBalance, setInvictusBalance] = useState<{ available: number; blocked?: number } | null>(null);
+  const [misticBalance, setInvictusBalance] = useState<{ available: number; blocked?: number } | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
 
   const [loading, setLoading] = useState<boolean>(() => {
@@ -36,7 +36,7 @@ export function Dashboard() {
     const fetchBalance = async () => {
       try {
         setBalanceLoading(true);
-        const res = await fetch(`/api/gateways/invictuspay/${activeStore.id}/balance`, {
+        const res = await fetch(`/api/gateways/misticpay/balance`, {
           headers: {
              'Authorization': `Bearer ${await useAuthStore.getState().user?.getIdToken()}`
           }
@@ -118,10 +118,10 @@ export function Dashboard() {
     { name: 'Clientes', value: stats.totalCustomers, icon: Users, color: 'text-purple-600', bg: 'bg-purple-50' },
   ];
 
-  if (invictusBalance !== null) {
+  if (misticBalance !== null) {
       statCards.unshift({
-         name: 'Saldo InvictusPay',
-         value: formatCurrency((invictusBalance.available || 0) / 100),
+         name: 'Saldo Mistic Pay',
+         value: formatCurrency(misticBalance.available || 0),
          icon: DollarSign,
          color: 'text-amber-600',
          bg: 'bg-amber-50'

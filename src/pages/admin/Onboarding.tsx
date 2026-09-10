@@ -264,7 +264,7 @@ export function Onboarding() {
             
             <div className="flex rounded-xl overflow-hidden border border-white/15 bg-white/5 focus-within:ring-2 focus-within:ring-teal-500 focus-within:border-teal-500 transition-all">
               <span className="inline-flex items-center px-3 text-xs sm:text-sm text-slate-400 bg-white/5 border-r border-white/10 select-none">
-                frontmarket.cysmk.online/
+                marketplace.frontmk.online/
               </span>
               <input
                 id="storeSlug"
@@ -306,7 +306,7 @@ export function Onboarding() {
                 Endereço de Acesso à sua Vitrine:
               </div>
               <div className="font-mono text-teal-200 break-all select-all font-medium">
-                https://frontmarket.cysmk.online/{displaySlug}
+                https://marketplace.frontmk.online/{displaySlug}
               </div>
             </div>
           )}

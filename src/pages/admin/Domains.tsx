@@ -160,7 +160,7 @@ export function Domains() {
         <ul className="list-disc pl-5 space-y-2 text-sm text-indigo-800">
           <li>Acesse o painel onde você comprou o domínio (ex: Registro.br, HostGator, GoDaddy).</li>
           <li>Crie um registro do tipo <strong>CNAME</strong>.</li>
-          <li>Aponte o valor (destino) para: <code className="bg-indigo-100 px-1.5 py-0.5 rounded font-mono text-indigo-900">frontmarket.cysmk.online</code></li>
+          <li>Aponte o valor (destino) para: <code className="bg-indigo-100 px-1.5 py-0.5 rounded font-mono text-indigo-900">marketplace.frontmk.online</code></li>
         </ul>
       </div>
     </div>

@@ -11,41 +11,12 @@ import { setupStripeRoutes } from './server-stripe.js';
 import { setupPagBankRoutes } from './server-pagbank.js';
 import { setupInfinitePayRoutes } from './server-infinitepay.js';
 import { setupStreamxRoutes } from './server-streamx.js';
+import { setupMisticPayRoutes } from './server-misticpay.js';
+import { setupWalletRoutes } from "./server-wallet.js";
 
 
-// Lazy Firebase Admin Initialization
-let firebaseAdminApp: App | null = null;
-
-function getFirebaseAdmin() {
-  if (!firebaseAdminApp) {
-    const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
-    const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || 'gen-lang-client-0736685342';
-    
-    if (serviceAccountJson) {
-      try {
-        const serviceAccount = JSON.parse(serviceAccountJson);
-        firebaseAdminApp = initializeApp({
-          credential: cert(serviceAccount),
-          projectId: serviceAccount.project_id || projectId,
-        });
-      } catch (err) {
-        console.error('Error parsing FIREBASE_SERVICE_ACCOUNT JSON', err);
-        throw new Error('Invalid FIREBASE_SERVICE_ACCOUNT JSON');
-      }
-    } else {
-      // Fallback for AI Studio preview environment where default credentials might work if ADC is present
-      // or we just initialize with projectId (Firestore can sometimes work with default credentials if the service account has access)
-      firebaseAdminApp = initializeApp({
-        projectId
-      });
-      console.log('[INFO] Initialized Firebase Admin without FIREBASE_SERVICE_ACCOUNT. This might fail if ADC is missing or lacks permissions.');
-    }
-  }
-  return firebaseAdminApp;
-}
-
-import { getClientDb } from './server-firebase-client.js';
-const getFirestore = getClientDb;
+import { getAdminDb, getFirebaseAdmin } from './server-firebase-admin.js';
+const getFirestore = getAdminDb;
 
 const getAuth = () => {
   const app = getFirebaseAdmin();
@@ -121,6 +92,8 @@ async function startServer() {
   setupPagBankRoutes(app, authMiddleware, getFirestore);
   setupInfinitePayRoutes(app, authMiddleware, getFirestore);
   setupStreamxRoutes(app, authMiddleware);
+  setupMisticPayRoutes(app, authMiddleware, getFirestore);
+  setupWalletRoutes(app, authMiddleware, getFirestore);
 
 
   // --- DIDIT KYC ENDPOINTS ---
@@ -143,7 +116,7 @@ async function startServer() {
         body: JSON.stringify({
           workflow_id: process.env.DIDIT_WORKFLOW_ID || '6b43db1f-9cb7-48f1-a0a7-1941464fb1ca',
           vendor_data: user.uid,
-          callback: `${process.env.APP_URL || 'https://frontmarket.cysmk.online'}/admin/verification/result`
+          callback: `${process.env.APP_URL || 'https://marketplace.frontmk.online'}/admin/verification/result`
         })
       });
       

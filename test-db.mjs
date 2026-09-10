@@ -1,4 +1,4 @@
-import { getFirebaseAdmin, getAdminDb } from './server-firebase-admin.js';
+import { getFirebaseAdmin, getAdminDb } from './dist/server-firebase-admin.js';
 
 async function test() {
   try {

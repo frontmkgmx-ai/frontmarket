@@ -14,7 +14,8 @@ import {
   Store as StoreIcon,
   Layers,
   ShieldCheck,
-  Palette
+  Palette,
+  Wallet
 } from 'lucide-react';
 
 import { useState } from 'react';
@@ -38,6 +39,7 @@ export function DashboardLayout() {
 
   const navItems = [
     { name: 'Dashboard', icon: LayoutDashboard, path: '/admin' },
+    { name: 'Carteira', icon: Wallet, path: '/admin/wallet' },
     { name: 'Pedidos', icon: ShoppingBag, path: '/admin/orders' },
     { name: 'Produtos', icon: Package, path: '/admin/products' },
     { name: 'Categorias', icon: Layers, path: '/admin/categories' },
@@ -45,7 +47,8 @@ export function DashboardLayout() {
     { name: 'Gateways', icon: CreditCard, path: '/admin/gateways' },
     { name: 'Domínios', icon: ExternalLink, path: '/admin/domains' },
     { name: 'Verificação', icon: ShieldCheck, path: '/admin/verification' },
-    { name: 'Personalização', icon: Palette, path: '/admin/personalization' },
+    { name: 'Personalização', icon: Palette,
+  Wallet, path: '/admin/personalization' },
     { name: 'Configurações', icon: Settings, path: '/admin/settings' },
   ];
 

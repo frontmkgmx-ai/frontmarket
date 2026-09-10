@@ -282,7 +282,7 @@ export function Settings() {
             </label>
             <div className="flex items-center">
               <span className="bg-slate-100 border border-r-0 border-slate-200 text-slate-500 px-3 py-2 text-xs rounded-l-xl select-none">
-                frontmarket.cysmk.online/
+                marketplace.frontmk.online/
               </span>
               <input
                 type="text"
@@ -312,7 +312,7 @@ export function Settings() {
                 rel="noreferrer"
                 className="font-mono text-indigo-600 hover:underline font-semibold"
               >
-                https://frontmarket.cysmk.online/{slug || generateSlug(name)}
+                https://marketplace.frontmk.online/{slug || generateSlug(name)}
               </a>
             </div>
             {validationResult?.isValid && (
