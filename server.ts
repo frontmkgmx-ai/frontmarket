@@ -10,6 +10,7 @@ import { setupMercadoPagoRoutes } from './server-mercadopago.js';
 import { setupStripeRoutes } from './server-stripe.js';
 import { setupPagBankRoutes } from './server-pagbank.js';
 import { setupInfinitePayRoutes } from './server-infinitepay.js';
+import { setupStreamxRoutes } from './server-streamx.js';
 
 
 // Lazy Firebase Admin Initialization
@@ -118,6 +119,7 @@ async function startServer() {
   setupStripeRoutes(app, authMiddleware, getFirestore);
   setupPagBankRoutes(app, authMiddleware, getFirestore);
   setupInfinitePayRoutes(app, authMiddleware, getFirestore);
+  setupStreamxRoutes(app, authMiddleware);
 
 
   // --- DIDIT KYC ENDPOINTS ---

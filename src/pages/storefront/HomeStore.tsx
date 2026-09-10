@@ -7,6 +7,7 @@ import { formatCurrency } from '../../lib/utils';
 import { ShoppingBag } from 'lucide-react';
 import { FastCache } from '../../lib/cache';
 import { withTimeout } from '../../lib/asyncGuard';
+import { resolveStreamxImageUrl } from '../../lib/streamx';
 import { SmartLoader } from '../../components/SmartLoader';
 import { ThemeConfig } from '../../lib/themes';
 
@@ -116,7 +117,7 @@ export function HomeStore() {
               <div className="aspect-square bg-slate-100 overflow-hidden relative">
                 {product.images && product.images.length > 0 ? (
                   <img
-                    src={product.images[0]}
+                    src={resolveStreamxImageUrl(product.images[0])}
                     alt={product.name}
                     className="object-cover object-center w-full h-full group-hover:scale-103 transition-transform duration-300"
                     loading="lazy"

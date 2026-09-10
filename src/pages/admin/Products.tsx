@@ -7,6 +7,7 @@ import { Trash2, Plus, Image as ImageIcon, Sparkles } from 'lucide-react';
 import { Link } from 'react-router';
 import { formatCurrency } from '../../lib/utils';
 import { FastCache } from '../../lib/cache';
+import { resolveStreamxImageUrl } from '../../lib/streamx';
 
 export function Products() {
   const { activeStore } = useAuthStore();
@@ -147,7 +148,7 @@ export function Products() {
                       <div className="flex items-center">
                         <div className="h-10 w-10 shrink-0 bg-slate-100 rounded-lg overflow-hidden flex items-center justify-center border border-slate-200">
                           {product.images && product.images.length > 0 ? (
-                            <img className="h-10 w-10 object-cover" src={product.images[0]} alt="" loading="lazy" />
+                            <img className="h-10 w-10 object-cover" src={resolveStreamxImageUrl(product.images[0])} alt="" loading="lazy" />
                           ) : (
                             <ImageIcon className="h-4 w-4 text-slate-400" />
                           )}

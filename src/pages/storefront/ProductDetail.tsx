@@ -8,6 +8,7 @@ import { ArrowLeft, ShoppingCart, Check, RefreshCw, ChevronLeft, ChevronRight } 
 import { useCartStore } from '../../store/cartStore';
 import { FastCache } from '../../lib/cache';
 import { withTimeout } from '../../lib/asyncGuard';
+import { resolveStreamxImageUrl } from '../../lib/streamx';
 import { SmartLoader } from '../../components/SmartLoader';
 import { ThemeConfig } from '../../lib/themes';
 import { AdvancedVideoPlayer } from '../../components/AdvancedVideoPlayer';
@@ -242,7 +243,7 @@ export function ProductDetail() {
                       <div key={index} className="w-full h-full flex-shrink-0 relative">
                         {item.type === 'image' ? (
                           <img
-                            src={item.url}
+                            src={resolveStreamxImageUrl(item.url)}
                             alt={`${product.name} ${index + 1}`}
                             className="w-full h-full object-cover object-center"
                           />
@@ -293,7 +294,7 @@ export function ProductDetail() {
                   onClick={() => setCurrentMediaIndex(idx)}
                   className={`w-16 h-16 shrink-0 rounded-xl overflow-hidden border-2 transition-all ${currentMediaIndex === idx ? 'border-indigo-600 shadow-sm' : 'border-slate-200 opacity-60 hover:opacity-100'}`}
                 >
-                  <img src={img} alt="Thumbnail" className="w-full h-full object-cover" />
+                  <img src={resolveStreamxImageUrl(img)} alt="Thumbnail" className="w-full h-full object-cover" />
                 </button>
               ))}
             </div>

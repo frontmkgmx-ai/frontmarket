@@ -1,9 +1,18 @@
-const { initializeApp } = require('firebase-admin/app');
-const { getFirestore } = require('firebase-admin/firestore');
+const admin = require('firebase-admin');
+admin.initializeApp({
+  projectId: process.env.VITE_FIREBASE_PROJECT_ID
+});
+const db = admin.firestore();
 
-const app = initializeApp({ projectId: 'gen-lang-client-0736685342' });
-const db = getFirestore(app, 'ai-studio-f452ed5b-7861-4365-a109-42e00eede901');
-
-db.collection('users').limit(1).get()
-  .then(snap => console.log('Success! Docs:', snap.size))
-  .catch(err => console.error('Error:', err));
+async function test() {
+  const snaps = await db.collection('stores').get();
+  for (const store of snaps.docs) {
+    console.log(`Store: ${store.id}`);
+    const prods = await db.collection('stores').doc(store.id).collection('products').get();
+    for (const prod of prods.docs) {
+      console.log(`  Product: ${prod.data().name}`);
+      console.log(`    Images: ${JSON.stringify(prod.data().images)}`);
+    }
+  }
+}
+test().catch(console.error);

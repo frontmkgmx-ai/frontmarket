@@ -1,56 +1,95 @@
-const STREAMX_BASE_URL = 'https://streamx.frontmk.online/api/s3';
-const BUCKET_NAME = 'midia';
-const STREAMX_API_KEY = 'mk_9325c51c6e03270eb749a87fe9588d129ab1da0d8eb5168b';
+import { useAuthStore } from '../store/authStore';
 
+export interface StreamxObject {
+  id: string;
+  name: string;
+  size?: number;
+  mime_type?: string;
+  created_at?: string;
+}
+
+const getAuthHeaders = async () => {
+  const token = await useAuthStore.getState().user?.getIdToken();
+  if (!token) {
+    throw new Error('User not authenticated');
+  }
+  return {
+    'Authorization': `Bearer ${token}`
+  };
+};
+
+/**
+ * Upload a file and return its public stream URL via proxy
+ */
 export async function uploadFileToStreamx(file: File): Promise<string> {
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await fetch(`${STREAMX_BASE_URL}/${BUCKET_NAME}/objects`, {
+  const headers = await getAuthHeaders();
+  
+  const response = await fetch('/api/storage/upload', {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${STREAMX_API_KEY}`
-    },
+    headers,
     body: formData
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Failed to upload file to Streamx: ${response.status} ${errorText}`);
+    if (response.status === 401) {
+       throw new Error(`Credenciais do Streamx (API Key ou Bucket ID) estão incorretas ou sem permissão. Verifique o seu painel MyCloud.`);
+    }
+    throw new Error(`Failed to upload file: ${response.status} ${errorText}`);
   }
 
   const data = await response.json();
-  
-  // The S3 endpoint returns { key, size, url }
   if (data.url) {
     return data.url;
   }
   
-  const objectId = data.key || data.id || data.object_id || data.name;
-  if (!objectId) {
-      console.warn('Unknown response format from Streamx:', data);
-      throw new Error('Could not determine file URL from response');
-  }
-
-  return `${STREAMX_BASE_URL}/${BUCKET_NAME}/objects/${objectId}`;
+  throw new Error('Unknown response format from Streamx Proxy');
 }
 
-export async function deleteFileFromStreamx(fileUrl: string): Promise<void> {
+/**
+ * Delete an object by its Stream URL or ID via proxy
+ */
+export async function deleteFileFromStreamx(fileUrlOrId: string): Promise<void> {
   try {
-    // Attempt to extract the object key from the URL
-    // Format: https://streamx.frontmk.online/api/s3/midia/objects/foto.jpg
-    const match = fileUrl.match(/\/objects\/([^\/]+)$/);
-    if (match && match[1]) {
-      const objectId = match[1];
-      await fetch(`${STREAMX_BASE_URL}/${BUCKET_NAME}/objects/${objectId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${STREAMX_API_KEY}`
-        }
-      });
-    }
+    const headers = await getAuthHeaders();
+    await fetch('/api/storage/delete', {
+      method: 'DELETE',
+      headers: {
+        ...headers,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ fileUrlOrId })
+    });
   } catch (err) {
-    console.error('Error deleting file from Streamx:', err);
+    console.error('Error deleting file:', err);
   }
 }
 
+/**
+ * Resolves an image URL. If it's a direct Streamx URL, rewrites it to use the local proxy.
+ */
+export function resolveStreamxImageUrl(url: string): string {
+  if (!url) return url;
+  
+  // If it's already a proxy URL or external URL, return it
+  if (url.startsWith('/api/storage/image/') || (!url.includes('streamx.frontmk.online'))) {
+    return url;
+  }
+
+  // Extract the object ID from a Streamx URL
+  const streamMatch = url.match(/\/objects\/([^\/]+)\/stream$/);
+  if (streamMatch && streamMatch[1]) {
+    return `/api/storage/image/${streamMatch[1]}`;
+  }
+
+  const s3Match = url.match(/\/objects\/([^\/]+)$/);
+  if (s3Match && s3Match[1]) {
+     return `/api/storage/image/${s3Match[1]}`;
+  }
+
+  // If it can't be parsed, return original
+  return url;
+}
