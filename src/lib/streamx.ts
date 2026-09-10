@@ -27,7 +27,7 @@ export async function uploadFileToStreamx(file: File): Promise<string> {
 
   const headers = await getAuthHeaders();
   
-  const response = await fetch('/api/storage/upload', {
+  const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/storage/upload`, {
     method: 'POST',
     headers,
     body: formData
@@ -55,7 +55,7 @@ export async function uploadFileToStreamx(file: File): Promise<string> {
 export async function deleteFileFromStreamx(fileUrlOrId: string): Promise<void> {
   try {
     const headers = await getAuthHeaders();
-    await fetch('/api/storage/delete', {
+    await fetch(`${import.meta.env.VITE_API_URL || ''}/api/storage/delete`, {
       method: 'DELETE',
       headers: {
         ...headers,
@@ -75,19 +75,20 @@ export function resolveStreamxImageUrl(url: string): string {
   if (!url) return url;
   
   // If it's already a proxy URL or external URL, return it
-  if (url.startsWith('/api/storage/image/') || (!url.includes('streamx.frontmk.online'))) {
+  const apiUrl = import.meta.env.VITE_API_URL || '';
+  if (url.startsWith(`${apiUrl}/api/storage/image/`) || url.startsWith('/api/storage/image/') || (!url.includes('streamx.frontmk.online'))) {
     return url;
   }
 
   // Extract the object ID from a Streamx URL
   const streamMatch = url.match(/\/objects\/([^\/]+)\/stream$/);
   if (streamMatch && streamMatch[1]) {
-    return `/api/storage/image/${streamMatch[1]}`;
+    return `${apiUrl}/api/storage/image/${streamMatch[1]}`;
   }
 
   const s3Match = url.match(/\/objects\/([^\/]+)$/);
   if (s3Match && s3Match[1]) {
-     return `/api/storage/image/${s3Match[1]}`;
+     return `${apiUrl}/api/storage/image/${s3Match[1]}`;
   }
 
   // If it can't be parsed, return original

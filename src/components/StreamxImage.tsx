@@ -17,7 +17,7 @@ export function StreamxImage({ src, alt, className, ...props }: StreamxImageProp
     
     // Se for uma URL do proxy local, usamos fetch para trazer como blob
     // Isso resolve bloqueios de SSO e problemas de cache
-    if (url.startsWith('/api/')) {
+    if (url.includes('/api/storage/image')) {
       fetch(url)
         .then(async res => {
           if (!res.ok) throw new Error('Failed to load image');
