@@ -252,24 +252,29 @@ export function StorefrontLayout() {
           {/* User Controls & Cart */}
           <div className={`flex items-center gap-1.5 sm:gap-4 shrink-0 ${headerStyle === 'centered' ? 'w-full sm:w-auto justify-center mt-2 sm:mt-0' : ''}`}>
             {customer && customer.storeId === store.id ? (
+              
               <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/80 px-2.5 py-1.5 rounded-xl">
-                <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold" style={{ backgroundColor: themeColor }}>
+                <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0" style={{ backgroundColor: themeColor }}>
                   {customer.name?.charAt(0).toUpperCase() || 'C'}
                 </div>
                 <div className="text-left hidden sm:block">
                   <span className="text-xs text-slate-800 font-bold block max-w-[120px] truncate leading-tight">
                     {customer.name}
                   </span>
-                  <span className="text-[10px] text-slate-400 font-mono block leading-none">
-                    @{customer.username}
-                  </span>
                 </div>
+                <Link
+                  to={`/${store.slug}/orders`}
+                  title="Meus Pedidos"
+                  className="p-1 text-slate-500 hover:text-indigo-600 rounded-md hover:bg-indigo-50 transition-colors cursor-pointer ml-1"
+                >
+                  <Package className="w-4 h-4" />
+                </Link>
                 <button 
                   onClick={() => logoutCustomer(store.id)} 
                   title="Sair da Conta"
-                  className="p-1 text-slate-400 hover:text-rose-600 rounded-md hover:bg-white transition-colors cursor-pointer ml-1"
+                  className="p-1 text-slate-400 hover:text-rose-600 rounded-md hover:bg-white transition-colors cursor-pointer"
                 >
-                  <LogOut className="w-3.5 h-3.5" />
+                  <LogOut className="w-4 h-4" />
                 </button>
               </div>
             ) : (

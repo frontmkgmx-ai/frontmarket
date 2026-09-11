@@ -1,5 +1,6 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router';
 import { useAuthStore } from '../store/authStore';
+import { NotificationCenter } from '../components/NotificationCenter';
 import { 
   LayoutDashboard, 
   ShoppingBag, 

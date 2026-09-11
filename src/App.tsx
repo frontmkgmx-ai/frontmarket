@@ -29,6 +29,7 @@ import { Cart } from './pages/storefront/Cart';
 import { Checkout } from './pages/storefront/Checkout';
 import { CustomerLogin } from './pages/storefront/CustomerLogin';
 import { CustomerRegister } from './pages/storefront/CustomerRegister';
+import { CustomerOrders } from './pages/storefront/CustomerOrders';
 
 export default function App() {
   const { initialize } = useAuthStore();
@@ -84,6 +85,7 @@ export default function App() {
             <Route path="checkout" element={<Checkout />} />
             <Route path="login" element={<CustomerLogin />} />
             <Route path="register" element={<CustomerRegister />} />
+            <Route path="orders" element={<CustomerOrders />} />
           </Route>
 
           {/* Fallback */}

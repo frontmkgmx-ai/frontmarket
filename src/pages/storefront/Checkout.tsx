@@ -67,9 +67,31 @@ export function Checkout() {
   };
 
 
+  
+  const [orderCancelled, setOrderCancelled] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(9 * 60); // 9 minutes in seconds
+
+  // Timer countdown
+  useEffect(() => {
+    if (success && !orderPaid && !orderCancelled && timeLeft > 0) {
+      const timer = setInterval(() => {
+        setTimeLeft((prev) => prev - 1);
+      }, 1000);
+      return () => clearInterval(timer);
+    } else if (timeLeft === 0 && !orderPaid) {
+      setOrderCancelled(true);
+      // Optional: call API to cancel order on backend, or let webhook handle it
+      fetch('/api/checkout/misticpay/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeId: store?.id, orderId })
+      }).catch(console.error);
+    }
+  }, [success, orderPaid, orderCancelled, timeLeft, store?.id, orderId]);
+
   // Poll for payment status
   useEffect(() => {
-    if (success && orderId && !orderPaid) {
+    if (success && orderId && !orderPaid && !orderCancelled) {
       const interval = setInterval(async () => {
         try {
           const res = await fetch('/api/checkout/misticpay/status', {
@@ -87,10 +109,11 @@ export function Checkout() {
         } catch (err) {
           console.error("Erro ao verificar status:", err);
         }
-      }, 5000); // Check every 5 seconds
+      }, 60000); // Check every 1 minute
       return () => clearInterval(interval);
     }
-  }, [success, orderId, orderPaid, store?.id]);
+  }, [success, orderId, orderPaid, orderCancelled, store?.id]);
+
 
 
   // Form State
@@ -257,16 +280,39 @@ export function Checkout() {
               Pedido #{orderId.slice(-6).toUpperCase()}
             </div>
           </div>
+          
+          {orderCancelled && !orderPaid && (
+            <div className="bg-rose-50/70 border border-rose-200/80 p-4 sm:p-6 rounded-2xl text-left space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-rose-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <XCircle className="w-4 h-4 text-rose-700" />
+                  Pagamento Expirado
+                </span>
+              </div>
+              <p className="text-sm text-rose-900/80 leading-relaxed">
+                O tempo para pagamento via PIX expirou e o pedido foi cancelado. Por favor, faça um novo pedido.
+              </p>
+            </div>
+          )}
+
           {/* Instruções PIX */}
-          {!orderPaid && (
+          {!orderPaid && !orderCancelled && (
+
             <div className="bg-emerald-50/70 border border-emerald-200/80 p-4 sm:p-6 rounded-2xl text-left space-y-3">
+              
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1.5">
                   <QrCode className="w-4 h-4 text-emerald-700" />
                   Pagamento via PIX Instantâneo
                 </span>
-                <span className="text-xs font-bold text-emerald-700">{formatCurrency(total)}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-1 rounded-md">
+                    Expira em {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
+                  </span>
+                  <span className="text-xs font-bold text-emerald-700">{formatCurrency(total)}</span>
+                </div>
               </div>
+
 
               {pixQrCodeBase64 && (
                 <div className="flex justify-center py-2">
