@@ -12,6 +12,7 @@ export default defineConfig(() => {
       },
     },
     server: {
+      allowedHosts: true,
       headers: {
         'Permissions-Policy': 'camera=*',
         'Cross-Origin-Opener-Policy': 'same-origin',
