@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Bell, X, Info, CheckCircle2, AlertCircle } from 'lucide-react';
 import { collection, query, orderBy, limit, onSnapshot, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase/config';
@@ -9,6 +9,7 @@ export function NotificationCenter() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const prevNotifRef = useRef<any[]>([]);
 
   // Request Browser Notification Permission
   useEffect(() => {
@@ -39,7 +40,8 @@ export function NotificationCenter() {
       });
       
       // Check for new notifications to trigger browser API
-      if (notifs.length > 0 && notifications.length > 0 && notifs[0].id !== notifications[0].id) {
+      const prevNotifs = prevNotifRef.current;
+      if (notifs.length > 0 && prevNotifs.length > 0 && notifs[0].id !== prevNotifs[0].id) {
         if (!notifs[0].read && 'Notification' in window && Notification.permission === 'granted') {
           new Notification(notifs[0].title, {
             body: notifs[0].message,
@@ -47,6 +49,7 @@ export function NotificationCenter() {
         }
       }
 
+      prevNotifRef.current = notifs;
       setNotifications(notifs);
       setUnreadCount(unread);
     });
@@ -76,7 +79,12 @@ export function NotificationCenter() {
   return (
     <div className="relative">
       <button 
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => {
+          setIsOpen(!isOpen);
+          if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+          }
+        }}
         className="relative p-2 text-slate-500 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors"
       >
         <Bell className="w-5 h-5" />

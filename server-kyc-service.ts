@@ -610,6 +610,17 @@ export class KycService {
           lastEventId: eventId
         }, { merge: true });
 
+        const stores = userData?.stores || [];
+        for (const storeId of stores) {
+          t.set(db.collection('stores').doc(storeId).collection('notifications').doc(), {
+            title: 'Documentação Recusada',
+            message: 'Este documento já está vinculado a outra conta verificada.',
+            type: 'error',
+            read: false,
+            createdAt: new Date().toISOString()
+          });
+        }
+
       } else {
         const isApproved = newStatus === 'approved';
         const docHash = docNumber ? hashCpf(docNumber) : null;
@@ -653,6 +664,18 @@ export class KycService {
           lastEventId: eventId,
           ...(isApproved || newStatus === 'declined' ? { completedAt: FieldValue.serverTimestamp() } : {})
         }, { merge: true });
+
+        const stores = userData?.stores || [];
+        for (const storeId of stores) {
+          t.set(db.collection('stores').doc(storeId).collection('notifications').doc(), {
+            title: isApproved ? 'Documentação Aprovada' : (newStatus === 'declined' ? 'Documentação Recusada' : 'Atualização de Verificação'),
+            message: isApproved ? 'Sua verificação de identidade foi aprovada com sucesso. Seus saques estão liberados!' : 
+                     (newStatus === 'declined' ? 'Houve um problema com sua verificação de identidade. Por favor, acesse as Configurações.' : 'O status da sua verificação de identidade foi atualizado.'),
+            type: isApproved ? 'success' : (newStatus === 'declined' ? 'error' : 'info'),
+            read: false,
+            createdAt: new Date().toISOString()
+          });
+        }
       }
 
       // 5.6 Registra o evento processado (Minimização de PII: sem imagens, selfies ou dados integrais)
