@@ -1,7 +1,7 @@
 import express from 'express';
 import crypto from 'crypto';
 import { doc, getDoc, collection, query, where, getDocs, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import fetch from 'node-fetch';
+
 import { encrypt, decrypt } from './server-invictuspay.js'; // reuse encrypt/decrypt
 
 export function setupMercadoPagoRoutes(app: express.Express, authMiddleware: any, getDb: any) {
@@ -123,7 +123,7 @@ export function setupMercadoPagoRoutes(app: express.Express, authMiddleware: any
             keyToUse = decrypt(querySnapshot.docs[0].data().access_token_encrypted);
         }
 
-        const _fetch = globalThis.fetch || require('node-fetch');
+        const _fetch = globalThis.fetch;
         const response = await _fetch('https://api.mercadopago.com/users/me', {
             headers: { 'Authorization': `Bearer ${keyToUse}` }
         });

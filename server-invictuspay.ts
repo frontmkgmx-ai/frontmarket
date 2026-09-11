@@ -1,7 +1,7 @@
 import express from 'express';
 import crypto from 'crypto';
 import { doc, getDoc, collection, query, where, getDocs, addDoc, updateDoc, serverTimestamp, deleteField, increment } from 'firebase/firestore';
-import fetch from 'node-fetch'; // Vite's node environment usually has global fetch
+ // Vite's node environment usually has global fetch
 
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY ? Buffer.from(process.env.ENCRYPTION_KEY.padEnd(32, '0').slice(0, 32)) : crypto.scryptSync('fallback-secret-invictuspay-key', 'salt', 32);
 
@@ -144,7 +144,7 @@ export function setupInvictusPayRoutes(app: express.Express, authMiddleware: any
             keyToUse = decrypt(querySnapshot.docs[0].data().api_key_encrypted);
         }
 
-        const _fetch = globalThis.fetch || require('node-fetch');
+        const _fetch = globalThis.fetch;
         const response = await _fetch('https://api.invictuspayv2.com.br/api/v1/account', {
             headers: { 'X-Api-Key': keyToUse }
         });
@@ -202,7 +202,7 @@ export function setupInvictusPayRoutes(app: express.Express, authMiddleware: any
              }
           };
 
-          const _fetch = globalThis.fetch || require('node-fetch');
+          const _fetch = globalThis.fetch;
           const response = await _fetch('https://api.invictuspayv2.com.br/api/v1/transactions', {
               method: 'POST',
               headers: { 
@@ -337,7 +337,7 @@ export function setupInvictusPayRoutes(app: express.Express, authMiddleware: any
         
         const keyToUse = decrypt(querySnapshot.docs[0].data().api_key_encrypted);
         
-        const _fetch = globalThis.fetch || require('node-fetch');
+        const _fetch = globalThis.fetch;
         const response = await _fetch('https://api.invictuspayv2.com.br/api/v1/cashout', {
             method: 'POST',
             headers: { 

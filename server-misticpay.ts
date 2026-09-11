@@ -1,5 +1,5 @@
 import express from 'express';
-import fetch from 'node-fetch';
+
 import { FieldValue } from 'firebase-admin/firestore';
 
 export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, getDb: any) {
