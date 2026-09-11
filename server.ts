@@ -70,7 +70,7 @@ function sortKeys(v: unknown): unknown {
 async function startServer() {
   const app = express();
   // Permitir configuração de porta dinâmica (ex: Railway, Render) ou porta 3000 (Padrão)
-  const PORT = 3000;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
   // Use JSON parser for all routes EXCEPT the webhook which needs raw body for signature verification
   app.use('/api', (req, res, next) => {
