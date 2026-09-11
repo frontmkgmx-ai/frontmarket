@@ -59,17 +59,18 @@ export function Wallet() {
         body: JSON.stringify({
           amount: parseFloat(withdrawAmount),
           pixKey,
-          pixKeyType: pixType
+          pixKeyType: pixType,
+          idempotencyKey: crypto.randomUUID()
         })
       });
 
       const data = await res.json();
       
       if (!res.ok) {
-        throw new Error(data.error || 'Erro ao processar saque.');
+        throw new Error(data.message || data.error || 'Erro ao processar saque.');
       }
       
-      setSuccessMsg('Saque solicitado com sucesso!');
+      setSuccessMsg(data.message || 'Saque solicitado com sucesso!');
       setShowWithdrawModal(false);
       setWithdrawAmount('');
       setPixKey('');
@@ -172,8 +173,11 @@ export function Wallet() {
            const withSnap = await getDocs(collection(db, 'stores', storeId, 'withdrawals'));
            withSnap.forEach(doc => {
              const w = doc.data();
-             withdrawalsList.push({ id: doc.id, ...w });
-             if (w.status === 'pending' || w.status === 'completed') {
+             // Skip failed/rejected from history visualization
+             if (w.status !== 'failed' && w.status !== 'rejected') {
+               withdrawalsList.push({ id: doc.id, ...w });
+             }
+             if (w.status === 'pending' || w.status === 'completed' || w.status === 'processing') {
                totalWithdrawn += (w.amount || 0);
                totalWithdrawn += (w.fee || 10);
              }
@@ -227,6 +231,11 @@ export function Wallet() {
           <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl">
             <h3 className="text-xl font-bold text-slate-900 mb-4">Solicitar Saque</h3>
             <p className="text-sm text-slate-500 mb-6">O valor será transferido imediatamente via PIX pela Mistic Pay.</p>
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 text-red-700 text-sm rounded-lg border border-red-200 break-words">
+                {error}
+              </div>
+            )}
             
             <form onSubmit={handleWithdraw} className="space-y-4">
               <div>

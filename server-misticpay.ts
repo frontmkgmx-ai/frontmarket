@@ -47,8 +47,15 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
         body: JSON.stringify(payload)
       });
 
-      const data = await response.json() as any;
-
+      let data: any = null;
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        data = { raw: text.substring(0, 500) };
+      }
+      
       if (!response.ok) {
         console.error('Erro na Mistic Pay:', data);
         return res.status(response.status).json({ error: 'Erro ao gerar PIX com a Mistic Pay', details: data });
@@ -101,40 +108,62 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
       const { transactionId, status, value, transactionType } = payload;
       
       console.log('[MisticPay Webhook] Recebido:', JSON.stringify(payload));
+      const db = getDb();
 
-      if (transactionType === 'DEPOSITO' && status === 'COMPLETO') {
-        const db = getDb();
-        
-        // A documentação diz que podemos enviar o orderId no 'transactionId' na hora de criar.
-        // Se a MisticPay retornar o nosso próprio transactionId (orderId) na notificação:
-        const queryById = await db.collectionGroup('orders').where('id', '==', transactionId).get();
-        const orderDoc = queryById.empty ? null : queryById.docs[0];
-        const orderRef = orderDoc ? orderDoc.ref : null;
-        
-        if (orderDoc) {
-          await orderRef.update({
-            status: 'paid',
-            paidAt: FieldValue.serverTimestamp(),
-            updatedAt: FieldValue.serverTimestamp()
-          });
-          console.log(`[MisticPay Webhook] Pedido ${transactionId} marcado como pago.`);
-        } else {
-          // Fallback: Tenta buscar onde misticTransactionId == transactionId (caso eles retornem o ID interno deles)
-          const querySnapshot = await db.collectionGroup('orders').where('misticTransactionId', '==', transactionId).get();
-          if (!querySnapshot.empty) {
-            const docRef = querySnapshot.docs[0].ref;
-            await docRef.update({
-              status: 'paid',
-              paidAt: FieldValue.serverTimestamp(),
-              updatedAt: FieldValue.serverTimestamp()
-            });
-            console.log(`[MisticPay Webhook] Pedido (Busca secundária) marcado como pago.`);
-          } else {
-             console.warn(`[MisticPay Webhook] Pedido associado a transactionId ${transactionId} não encontrado.`);
+      if (transactionType === 'DEPOSITO') {
+        if (status === 'COMPLETO' || status === 'PAID') {
+          // Busca pedido
+          const queryById = await db.collectionGroup('orders').where('id', '==', transactionId).get();
+          let orderDoc = queryById.empty ? null : queryById.docs[0];
+          
+          if (!orderDoc) {
+             const querySnapshot = await db.collectionGroup('orders').where('misticTransactionId', '==', transactionId).get();
+             if (!querySnapshot.empty) orderDoc = querySnapshot.docs[0];
+          }
+
+          if (orderDoc) {
+            const data = orderDoc.data();
+            if (data.status !== 'paid') {
+              await orderDoc.ref.update({
+                status: 'paid',
+                paidAt: FieldValue.serverTimestamp(),
+                updatedAt: FieldValue.serverTimestamp()
+              });
+              console.log(`[MisticPay Webhook] Pedido ${transactionId} marcado como pago.`);
+            } else {
+              console.log(`[MisticPay Webhook] Pedido ${transactionId} ja estava pago. (Idempotente)`);
+            }
           }
         }
-      }
+      } else if (transactionType === 'SAQUE' || transactionType === 'TRANSFERENCIA') {
+         // Lida com atualização assíncrona de saque
+         const queryById = await db.collectionGroup('withdrawals').where('id', '==', transactionId).get();
+         let wDoc = queryById.empty ? null : queryById.docs[0];
+         
+         if (!wDoc) {
+            const querySnapshot = await db.collectionGroup('withdrawals').where('misticTransactionId', '==', transactionId).get();
+            if (!querySnapshot.empty) wDoc = querySnapshot.docs[0];
+         }
 
+         if (wDoc) {
+            const data = wDoc.data();
+            // Apenas atualiza se não for transição inválida (ex: já finalizado)
+            if (data.status === 'processing' || data.status === 'pending') {
+               let newStatus = data.status;
+               if (status === 'COMPLETO' || status === 'SUCESSO' || status === 'COMPLETED') newStatus = 'completed';
+               else if (status === 'FALHA' || status === 'REJEITADO' || status === 'FAILED' || status === 'CANCELLED') newStatus = 'failed';
+               
+               if (newStatus !== data.status) {
+                  await wDoc.ref.update({
+                     status: newStatus,
+                     updatedAt: FieldValue.serverTimestamp()
+                  });
+                  console.log(`[MisticPay Webhook] Saque ${transactionId} atualizado para ${newStatus}.`);
+               }
+            }
+         }
+      }
+      
       res.status(200).send('OK');
     } catch (err) {
       console.error('[MisticPay Webhook] Erro:', err);
@@ -142,7 +171,6 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
     }
   });
 
-  // Consulta de Saldo Mistic Pay (Uso Global)
   app.get('/api/gateways/misticpay/balance', authMiddleware, async (req, res) => {
     try {
       const response = await fetch(`${MISTIC_API_URL}/users/balance`, {
@@ -150,7 +178,15 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
           'Authorization': getMisticAuthHeader()
         }
       });
-      const data = await response.json() as any;
+      let data: any = null;
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        data = { raw: text.substring(0, 500) };
+      }
+      
       if (!response.ok) {
         return res.status(response.status).json({ error: 'Erro ao consultar saldo', details: data });
       }
