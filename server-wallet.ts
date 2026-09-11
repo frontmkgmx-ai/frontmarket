@@ -1,5 +1,5 @@
 import express from 'express';
-import { restRunQuery, restAddDoc, restGetDocs } from './firestore-rest.js';
+import { restRunQuery, restAddDoc, restGetDocs, restDeleteDoc } from './firestore-rest.js';
 
 export function setupWalletRoutes(app: express.Express, authMiddleware: any, getDb: any) {
   app.post('/api/wallet/:storeId/withdraw', authMiddleware, async (req: express.Request, res: express.Response) => {
@@ -20,10 +20,7 @@ export function setupWalletRoutes(app: express.Express, authMiddleware: any, get
 
       const WITHDRAW_FEE = 10;
       const totalNeeded = withdrawAmount + WITHDRAW_FEE;
-
-      const PROJECT_ID = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || 'gen-lang-client-0736685342';
-      const DATABASE_ID = process.env.VITE_FIREBASE_DATABASE_ID || 'ai-studio-f452ed5b-7861-4365-a109-42e00eede901';
-      const parentPath = `projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents/stores/${storeId}`;
+      const parentPath = `stores/${storeId}`;
 
       // Calcular saldo disponível (somente pedidos com + de 3 dias)
       const orders = await restRunQuery(parentPath, 'orders', [
@@ -54,21 +51,36 @@ export function setupWalletRoutes(app: express.Express, authMiddleware: any, get
         }
         
         const netValue = value - fee;
-
         let paidAtTime = 0;
+        
         if (order.paidAt) paidAtTime = new Date(order.paidAt).getTime();
         else if (order.createdAt) paidAtTime = new Date(order.createdAt).getTime();
         else paidAtTime = now;
 
         const isReleased = (now - paidAtTime) >= THREE_DAYS_MS;
-
         if (isReleased) {
           availableBalanceAcc += netValue;
         }
       });
 
-      // Subtrair saques já realizados ou pendentes
-      const withdrawals = await restGetDocs(`projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents/stores/${storeId}/withdrawals`, token);
+      // Obter saques
+      let withdrawals = await restGetDocs(`stores/${storeId}/withdrawals`, token);
+      let needsRefetch = false;
+
+      // Limpeza de saques antigos presos
+      for (const w of withdrawals) {
+        if (w.status === 'pending') {
+          const createdAt = w.createdAt ? new Date(w.createdAt).getTime() : 0;
+          if (createdAt < new Date('2026-09-11T00:00:00Z').getTime()) {
+            await restDeleteDoc(`stores/${storeId}/withdrawals/${w.id}`, token);
+            needsRefetch = true;
+          }
+        }
+      }
+      
+      if (needsRefetch) {
+         withdrawals = await restGetDocs(`stores/${storeId}/withdrawals`, token);
+      }
       
       let totalWithdrawn = 0;
       withdrawals.forEach((w: any) => {
@@ -82,12 +94,12 @@ export function setupWalletRoutes(app: express.Express, authMiddleware: any, get
 
       if (totalNeeded > availableBalance) {
         return res.status(400).json({ 
-          error: `Saldo insuficiente para este saque. Você tem R$ ${availableBalance.toFixed(2)} disponível, mas solicitou R$ ${withdrawAmount.toFixed(2)} + R$ 10,00 de taxa (Total R$ ${totalNeeded.toFixed(2)}).` 
+          error: `Saldo insuficiente. Lembre-se que o valor das vendas só é liberado para saque 3 dias após o pagamento. Saldo liberado atual: R$ ${availableBalance.toFixed(2)}. Você solicitou R$ ${withdrawAmount.toFixed(2)} + R$ 10,00 de taxa (Total R$ ${totalNeeded.toFixed(2)}).` 
         });
       }
 
-      // Se passou na checagem, cria a solicitação de saque no Firebase usando REST API e o token do usuário!
-      await restAddDoc(`projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents/stores/${storeId}`, 'withdrawals', {
+      // Criar a solicitação de saque no Firebase via REST
+      await restAddDoc(`stores/${storeId}`, 'withdrawals', {
         storeId,
         amount: withdrawAmount,
         fee: WITHDRAW_FEE,
@@ -99,9 +111,9 @@ export function setupWalletRoutes(app: express.Express, authMiddleware: any, get
       }, token);
 
       res.json({ success: true, message: 'Saque solicitado com sucesso.' });
-
     } catch (err: any) {
       console.error('Erro ao processar saque:', err);
+      // Cleanest error response without crashing
       res.status(500).json({ error: err.message || 'Erro interno do servidor ao solicitar saque.' });
     }
   });

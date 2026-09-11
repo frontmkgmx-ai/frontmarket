@@ -1,0 +1,27 @@
+import fetch from 'node-fetch';
+const PROJECT_ID = 'gen-lang-client-0736685342';
+const DATABASE_ID = 'ai-studio-f452ed5b-7861-4365-a109-42e00eede901';
+
+async function test() {
+  const body = {
+    structuredQuery: {
+      from: [{ collectionId: 'orders' }],
+      where: {
+          fieldFilter: {
+            field: { fieldPath: 'status' },
+            op: 'EQUAL',
+            value: { stringValue: 'paid' }
+          }
+        }
+    }
+  };
+  const url = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents/stores/FANTASMA:runQuery`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  console.log(res.status, res.statusText);
+  console.log(await res.text());
+}
+test();

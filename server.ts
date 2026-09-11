@@ -1,3 +1,4 @@
+import fs from 'fs';
 import express from 'express';
 import path from 'path';
 import crypto from 'crypto';
@@ -69,7 +70,7 @@ function sortKeys(v: unknown): unknown {
 async function startServer() {
   const app = express();
   // Permitir configuração de porta dinâmica (ex: Railway, Render) ou porta 3000 (Padrão)
-  const PORT = process.env.PORT || 3000;
+  const PORT = 3000;
 
   // Use JSON parser for all routes EXCEPT the webhook which needs raw body for signature verification
   app.use('/api', (req, res, next) => {
@@ -81,6 +82,9 @@ async function startServer() {
   });
 
   // Health check
+  app.get('/api/debug-log', (req, res) => {
+    try { res.send(fs.readFileSync('wallet-error.log', 'utf8')); } catch (e) { res.send('No log yet: ' + e.message); }
+  });
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok' });
   });

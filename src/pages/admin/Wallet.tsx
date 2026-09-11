@@ -113,6 +113,22 @@ export function Wallet() {
         let totalApprovedCount = 0;
         let availableBalanceAcc = 0;
         let blockedBalanceAcc = 0;
+        
+        // Auto-clean any pending withdrawals on page load
+        const withSnap = await getDocs(collection(db, 'stores', storeId, 'withdrawals'));
+        for (const w of withSnap.docs) {
+          if (w.data().status === 'pending') {
+            const createdAt = w.data().createdAt?.toDate?.()?.getTime() || 0;
+            // Only auto-delete pending withdrawals created before September 11, 2026 (fix for invalid old state)
+            if (createdAt < new Date('2026-09-11T00:00:00Z').getTime()) {
+              try {
+                await deleteDoc(doc(db, 'stores', storeId, 'withdrawals', w.id));
+                console.log("Auto-cleaned invalid old pending withdrawal", w.id);
+              } catch (e) {}
+            }
+          }
+        }
+        
 
         const now = new Date().getTime();
         const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;

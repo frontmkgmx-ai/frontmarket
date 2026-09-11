@@ -66,7 +66,7 @@ export async function restRunQuery(parentPath: string, collectionId: string, whe
   const body = {
     structuredQuery: {
       from: [{ collectionId }],
-      where: {
+      where: whereFilters.length === 1 ? whereFilters[0] : {
         compositeFilter: {
           op: 'AND',
           filters: whereFilters
@@ -133,3 +133,11 @@ export async function restUpdateDoc(docPath: string, data: any, token: string) {
   return parseFirestoreDocument(resData);
 }
 
+
+export async function restDeleteDoc(docPath: string, token: string) {
+  const res = await fetch(`${BASE_URL}/${docPath}`, {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error(`REST Error: ${res.statusText}`);
+}
