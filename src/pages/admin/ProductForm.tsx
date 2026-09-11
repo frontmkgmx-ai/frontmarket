@@ -81,7 +81,10 @@ export function ProductForm() {
     const file = e.target.files[0];
     setUploadingImage(true);
     try {
-      const downloadURL = await uploadFileToStreamx(file);
+      let downloadURL = await uploadFileToStreamx(file);
+      if (file.type.startsWith('video/')) {
+        downloadURL += '?type=video';
+      }
       setImages(prev => [...prev, downloadURL]);
     } catch (err) {
       console.error(err);
@@ -257,7 +260,7 @@ export function ProductForm() {
 
           <div className="flex flex-wrap gap-4 mb-4">
             {images.map((url, i) => (
-              <div key={i} className="relative w-32 aspect-video border rounded-md overflow-hidden bg-gray-50">
+              <div key={i} className="relative w-32 aspect-square object-cover border rounded-md overflow-hidden bg-gray-50">
                 <StreamxImage src={url} alt="" className="object-cover w-full h-full" />
                 <button
                   type="button"
@@ -269,7 +272,7 @@ export function ProductForm() {
               </div>
             ))}
             
-            <label className="w-32 aspect-video border-2 border-dashed border-gray-300 rounded-md flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 shrink-0">
+            <label className="w-32 aspect-square object-cover border-2 border-dashed border-gray-300 rounded-md flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 shrink-0">
               {uploadingImage ? (
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-600"></div>
               ) : (

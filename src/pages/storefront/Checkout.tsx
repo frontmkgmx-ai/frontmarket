@@ -7,7 +7,7 @@ import { formatCurrency, maskCPF, maskPhone, maskCEP } from '../../lib/utils';
 import { useCartStore } from '../../store/cartStore';
 import { useCustomerAuthStore } from '../../store/customerAuthStore';
 import { 
-  CheckCircle, 
+  CheckCircle, XCircle, 
   ArrowLeft, 
   User, 
   MapPin, 

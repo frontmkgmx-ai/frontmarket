@@ -175,6 +175,7 @@ export function DashboardLayout() {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            <NotificationCenter />
             {activeStore && (
               <a
                 href={`/${activeStore.slug}`}

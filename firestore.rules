@@ -147,6 +147,9 @@ service cloud.firestore {
       match /activity/{activityId} {
         allow read, write: if isStoreOwner(storeId);
       }
+      match /notifications/{notificationId} {
+        allow read, write: if isStoreOwner(storeId);
+      }
       
       // Coleções Financeiras: Apenas leitura pelo proprietário. 
       // Escrita estritamente bloqueada no cliente (apenas via Firebase Admin SDK no servidor).

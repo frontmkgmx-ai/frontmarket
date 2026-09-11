@@ -5,7 +5,7 @@ import { db } from '../firebase/config';
 import { Store } from '../types';
 import { useCustomerAuthStore } from '../store/customerAuthStore';
 import { useCartStore } from '../store/cartStore';
-import { ShoppingBag, LogOut, ArrowLeft, RefreshCw, User } from 'lucide-react';
+import { ShoppingBag, LogOut, Package, ArrowLeft, RefreshCw, User } from 'lucide-react';
 import { FastCache } from '../lib/cache';
 import { withTimeout } from '../lib/asyncGuard';
 import { SmartLoader } from '../components/SmartLoader';

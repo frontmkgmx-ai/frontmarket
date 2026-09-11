@@ -202,21 +202,26 @@ export function ProductDetail() {
       <div className={getContainerLayout()}>
         {/* Imagem / Video do Produto (Carrossel) */}
         <div className={`w-full ${pdpStyle === 'centered' ? 'max-w-md mb-6' : ''}`}>
-          <div className={`aspect-video overflow-hidden bg-slate-100 border border-slate-200/80 shadow-xs relative group ${pdpStyle === 'split' ? 'rounded-none border-0' : 'rounded-2xl sm:rounded-3xl'}`}>
+          <div className={`aspect-square sm:aspect-[4/5] overflow-hidden bg-slate-100 border border-slate-200/80 shadow-xs relative group ${pdpStyle === 'split' ? 'rounded-none border-0' : 'rounded-2xl sm:rounded-3xl'}`}>
             {product.isDigital && (
               <span className="absolute top-3 left-3 bg-indigo-600/90 text-white text-xs font-bold px-2.5 py-1 rounded-lg backdrop-blur-xs z-20">
                 Produto Digital
               </span>
             )}
             
+            
             {(() => {
               const mediaItems: { type: 'image' | 'video', url: string }[] = [];
               if (product.images && product.images.length > 0) {
-                product.images.forEach(img => mediaItems.push({ type: 'image', url: img }));
+                product.images.forEach(img => {
+                  const isVideo = img.includes('?type=video') || img.match(/\.(mp4|webm|ogg)$/i);
+                  mediaItems.push({ type: isVideo ? 'video' : 'image', url: img });
+                });
               }
               if (product.videoUrl) {
                 mediaItems.push({ type: 'video', url: product.videoUrl });
               }
+
               
               if (mediaItems.length === 0) {
                 return (
