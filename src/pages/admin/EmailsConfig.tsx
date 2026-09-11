@@ -228,14 +228,14 @@ export function EmailsConfig() {
               
               {!editingProductEmail ? (
                 <>
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm text-slate-600">Configure e-mails que são disparados imediatamente após a compra de um produto específico (Ideal para entrega de links, chaves de acesso, ou materiais extras).</p>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <p className="text-sm text-slate-600 sm:max-w-md">Configure e-mails que são disparados imediatamente após a compra de um produto específico (Ideal para entrega de links, chaves de acesso, ou materiais extras).</p>
                     <button
                       onClick={() => {
                         setIsAddingProduct(true);
                         setEditingProductEmail({ id: '', productId: '', subject: '', body: '', enabled: true });
                       }}
-                      className="shrink-0 flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm"
+                      className="shrink-0 flex justify-center items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm w-full sm:w-auto"
                     >
                       <Plus className="w-4 h-4" />
                       Adicionar Regra
@@ -253,7 +253,7 @@ export function EmailsConfig() {
                       {productEmails.map((pe) => {
                         const prod = products.find(p => p.id === pe.productId);
                         return (
-                          <div key={pe.id} className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl shadow-sm">
+                          <div key={pe.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white border border-slate-200 rounded-xl shadow-sm gap-4 sm:gap-2">
                             <div className="flex items-center gap-4">
                               <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 border border-slate-200">
                                 {prod?.images?.[0] ? (
@@ -262,13 +262,13 @@ export function EmailsConfig() {
                                   <ShoppingBag className="w-5 h-5 text-slate-400" />
                                 )}
                               </div>
-                              <div>
-                                <h4 className="text-sm font-bold text-slate-800">{prod?.name || 'Produto Excluído'}</h4>
-                                <p className="text-xs text-slate-500 truncate max-w-sm">Assunto: {pe.subject}</p>
+                              <div className="min-w-0">
+                                <h4 className="text-sm font-bold text-slate-800 truncate">{prod?.name || 'Produto Excluído'}</h4>
+                                <p className="text-xs text-slate-500 truncate max-w-[200px] sm:max-w-sm">Assunto: {pe.subject}</p>
                               </div>
                             </div>
                             
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center justify-end gap-2">
                               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${pe.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                                 {pe.enabled ? 'Ativo' : 'Inativo'}
                               </span>
@@ -382,16 +382,16 @@ export function EmailsConfig() {
         </div>
 
         {/* Global Save Action */}
-        <div className="px-6 py-4 bg-white border-t border-slate-200 flex items-center justify-between">
+        <div className="px-6 py-4 bg-white border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
           {success ? (
              <div className="flex items-center text-emerald-600 text-sm font-medium gap-1.5 animate-in fade-in slide-in-from-bottom-2">
                <CheckCircle2 className="w-5 h-5" /> Preferências salvas com sucesso!
              </div>
-          ) : <div />}
+          ) : <div className="hidden sm:block" />}
           <button
             onClick={handleSaveAll}
             disabled={saving || !!editingProductEmail}
-            className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-xl transition-all disabled:opacity-50 flex items-center gap-2 shadow-md hover:shadow-lg hover:-translate-y-0.5"
+            className="w-full sm:w-auto justify-center px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-xl transition-all disabled:opacity-50 flex items-center gap-2 shadow-md hover:shadow-lg hover:-translate-y-0.5"
           >
             {saving ? (
               <><Loader2 className="w-4 h-4 animate-spin" /> Gravando...</>

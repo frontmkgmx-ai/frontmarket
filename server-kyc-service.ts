@@ -60,7 +60,7 @@ export function normalizeKycStatus(rawStatus?: string | null): KycCanonicalStatu
   if (!rawStatus) return 'not_started';
   const s = rawStatus.toLowerCase().trim();
 
-  if (s === 'approved' || s === 'completed' || s === 'verified' || s === 'success') {
+  if (s === 'approved') {
     return 'approved';
   }
   if (s === 'declined' || s === 'rejected' || s === 'failed') {
