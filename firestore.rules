@@ -1,132 +1,75 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // --- Helper Functions ---
     function isAuthenticated() {
       return request.auth != null;
     }
     
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-    
     function isStoreOwner(storeId) {
-      return isAuthenticated() && (
-        resource.data.ownerId == request.auth.uid ||
-        request.resource.data.ownerId == request.auth.uid ||
-        get(/databases/$(database)/documents/stores/$(storeId)).data.ownerId == request.auth.uid
-      );
+      return isAuthenticated() && get(/databases/$(database)/documents/stores/$(storeId)).data.ownerId == request.auth.uid;
     }
 
-    function isStoreMember(storeId) {
-      return isAuthenticated() && (
-        get(/databases/$(database)/documents/stores/$(storeId)).data.ownerId == request.auth.uid ||
-        exists(/databases/$(database)/documents/stores/$(storeId)/members/$(request.auth.uid))
-      );
-    }
-
-    // --- Users Profiles ---
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow create, update: if isAuthenticated() && request.auth.uid == userId;
-      allow delete: if false; // Proteção contra exclusão acidental de contas
+      allow delete: if false;
     }
-
-    // --- Stores and Store Management ---
+    
     match /seller_payment_gateways/{gatewayId} {
       allow read, write: if true;
     }
     
     match /stores/{storeId} {
-      // Vitrine pública: Qualquer pessoa pode ler informações da loja
       allow read: if true;
-      
-      // Criação de nova loja por usuário autenticado
       allow create: if isAuthenticated() && request.resource.data.ownerId == request.auth.uid;
-      
-      // Edição apenas pelo dono da loja
       allow update, delete: if isAuthenticated() && (
         resource.data.ownerId == request.auth.uid ||
         request.resource.data.ownerId == request.auth.uid
       );
-
-      // 1. Membros da equipe da loja
+      
       match /members/{memberId} {
-        allow read: if isStoreMember(storeId);
-        allow write: if isAuthenticated() && (request.auth.uid == memberId || isStoreMember(storeId));
+        allow read, write: if isStoreOwner(storeId);
       }
-
-      // 2. Categorias de produtos
       match /categories/{categoryId} {
         allow read: if true;
-        allow write: if isStoreMember(storeId);
+        allow write: if isStoreOwner(storeId);
       }
-
-      // 3. Catálogo de Produtos
       match /products/{productId} {
         allow read: if true;
-        allow write: if isStoreMember(storeId);
+        allow write: if isStoreOwner(storeId);
       }
-
-      // 4. Pedidos (Checkout e Gestão)
       match /orders/{orderId} {
-        // Qualquer visitante ou cliente autenticado pode registrar um pedido no checkout
         allow create: if true;
-        
-        // Leitura: O lojista (dono) ou o próprio cliente que efetuou o pedido
-        allow read: if isStoreMember(storeId) || (
+        allow read: if isStoreOwner(storeId) || (
           isAuthenticated() && resource.data.customerId == request.auth.uid
         );
-        
-        // Atualização de status: Apenas equipe do lojista
-        allow update, delete: if isStoreMember(storeId);
+        allow update, delete: if isStoreOwner(storeId);
       }
-      
-      // 5. Clientes da Loja (Autenticação exclusiva via Firestore sem Firebase Auth)
       match /customers/{customerId} {
-        // Criação e leitura para autenticação e consulta de usuários na vitrine
-        allow read, create: if true;
-        // Atualização pelo lojista ou pelo próprio registro do cliente
-        allow update: if true;
-        // Exclusão apenas pelo lojista da equipe
-        allow delete: if isStoreMember(storeId);
+        allow read, create, update: if true;
+        allow delete: if isStoreOwner(storeId);
       }
-
-      // 6. Cupons e Promoções
       match /coupons/{couponId} {
         allow read: if true;
-        allow write: if isStoreMember(storeId);
+        allow write: if isStoreOwner(storeId);
       }
-
-      // 7. Configurações de Pagamento, Frete e Customização
       match /settings/{settingId} {
         allow read: if true;
-        allow write: if isStoreMember(storeId);
+        allow write: if isStoreOwner(storeId);
       }
-
-      // 8. Métricas e Logs de Atividade
       match /analytics/{metricId} {
-        allow read, write: if isStoreMember(storeId);
+        allow read, write: if isStoreOwner(storeId);
       }
-
       match /activity/{activityId} {
-        allow read, write: if isStoreMember(storeId);
+        allow read, write: if isStoreOwner(storeId);
       }
-
-      
-      // 9. Saques (Withdrawals)
       match /withdrawals/{withdrawalId} {
-        allow read: if isStoreMember(storeId);
-        allow create: if isStoreMember(storeId); // Allow via REST API backend proxy
-        allow update, delete: if isStoreMember(storeId); // Allow store owner to cancel
+        allow read, create, update, delete: if isStoreOwner(storeId);
       }
-
-      // Fallback seguro para qualquer outra subcoleção futura
       match /{allSubcollections=**} {
         allow read: if true;
-        allow write: if isStoreMember(storeId);
+        allow write: if isStoreOwner(storeId);
       }
     }
   }

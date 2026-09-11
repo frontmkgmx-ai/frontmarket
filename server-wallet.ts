@@ -23,6 +23,7 @@ export function setupWalletRoutes(app: express.Express, authMiddleware: any, get
       const parentPath = `stores/${storeId}`;
 
       // Calcular saldo disponível (somente pedidos com + de 3 dias)
+      console.log('Fetching orders...');
       const orders = await restRunQuery(parentPath, 'orders', [
         {
           fieldFilter: {
@@ -64,6 +65,7 @@ export function setupWalletRoutes(app: express.Express, authMiddleware: any, get
       });
 
       // Obter saques
+      console.log('Fetching withdrawals...');
       let withdrawals = await restGetDocs(`stores/${storeId}/withdrawals`, token);
       let needsRefetch = false;
 
@@ -72,6 +74,7 @@ export function setupWalletRoutes(app: express.Express, authMiddleware: any, get
         if (w.status === 'pending') {
           const createdAt = w.createdAt ? new Date(w.createdAt).getTime() : 0;
           if (createdAt < new Date('2026-09-11T00:00:00Z').getTime()) {
+            console.log('Deleting withdrawal', w.id);
             await restDeleteDoc(`stores/${storeId}/withdrawals/${w.id}`, token);
             needsRefetch = true;
           }
@@ -99,6 +102,7 @@ export function setupWalletRoutes(app: express.Express, authMiddleware: any, get
       }
 
       // Criar a solicitação de saque no Firebase via REST
+      console.log('Creating withdrawal...');
       await restAddDoc(`stores/${storeId}`, 'withdrawals', {
         storeId,
         amount: withdrawAmount,
