@@ -69,7 +69,7 @@ export function Wallet() {
         throw new Error('Sessão expirada. Faça login novamente.');
       }
 
-      const res = await fetch(`/api/wallet/${activeStore.id}`, {
+      const res = await fetch(`/api/finances/${activeStore.id}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -109,7 +109,7 @@ export function Wallet() {
         throw new Error('Sessão expirada. Por favor, autentique-se novamente.');
       }
 
-      const res = await fetch(`/api/wallet/${activeStore.id}/withdraw`, {
+      const res = await fetch(`/api/finances/${activeStore.id}/withdraw`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

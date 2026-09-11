@@ -1120,7 +1120,7 @@ export class FinancialWalletService {
         console.error(`[MisticPay Withdrawal] Erro crítico: MISTIC_PAY_WEBHOOK_SECRET não configurado.`);
         return {
           success: false,
-          status: 'error',
+          
           code: 'CONFIG_ERROR',
           message: 'Configuração do gateway incompleta (MISTIC_PAY_WEBHOOK_SECRET ausente).',
           requestId

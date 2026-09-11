@@ -202,7 +202,7 @@ export function ProductDetail() {
       <div className={getContainerLayout()}>
         {/* Imagem / Video do Produto (Carrossel) */}
         <div className={`w-full ${pdpStyle === 'centered' ? 'max-w-md mb-6' : ''}`}>
-          <div className={`aspect-square overflow-hidden bg-slate-100 border border-slate-200/80 shadow-xs relative group ${pdpStyle === 'split' ? 'rounded-none border-0' : 'rounded-2xl sm:rounded-3xl'}`}>
+          <div className={`aspect-video overflow-hidden bg-slate-100 border border-slate-200/80 shadow-xs relative group ${pdpStyle === 'split' ? 'rounded-none border-0' : 'rounded-2xl sm:rounded-3xl'}`}>
             {product.isDigital && (
               <span className="absolute top-3 left-3 bg-indigo-600/90 text-white text-xs font-bold px-2.5 py-1 rounded-lg backdrop-blur-xs z-20">
                 Produto Digital
@@ -293,7 +293,7 @@ export function ProductDetail() {
                 <button
                   key={idx}
                   onClick={() => setCurrentMediaIndex(idx)}
-                  className={`w-16 h-16 shrink-0 rounded-xl overflow-hidden border-2 transition-all ${currentMediaIndex === idx ? 'border-indigo-600 shadow-sm' : 'border-slate-200 opacity-60 hover:opacity-100'}`}
+                  className={`w-20 aspect-video shrink-0 rounded-xl overflow-hidden border-2 transition-all ${currentMediaIndex === idx ? 'border-indigo-600 shadow-sm' : 'border-slate-200 opacity-60 hover:opacity-100'}`}
                 >
                   <StreamxImage src={img} alt="Thumbnail" className="w-full h-full object-cover" />
                 </button>

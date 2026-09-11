@@ -229,7 +229,8 @@ export function ProductForm() {
             </div>
             
             <div className="pt-4 border-t border-gray-100">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Imagens do Produto</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Imagens do Produto</label>
+              <p className="text-xs text-gray-500 mb-3">Dica: As imagens são exibidas em formato 16:9 (paisagem) em todo o site. Faça o upload de imagens neste formato para evitar cortes.</p>
               <div className="flex gap-2 mb-4">
                 <input
                   type="url"
@@ -256,7 +257,7 @@ export function ProductForm() {
 
           <div className="flex flex-wrap gap-4 mb-4">
             {images.map((url, i) => (
-              <div key={i} className="relative h-24 w-24 border rounded-md overflow-hidden bg-gray-50">
+              <div key={i} className="relative w-32 aspect-video border rounded-md overflow-hidden bg-gray-50">
                 <StreamxImage src={url} alt="" className="object-cover w-full h-full" />
                 <button
                   type="button"
@@ -268,7 +269,7 @@ export function ProductForm() {
               </div>
             ))}
             
-            <label className="h-24 w-24 border-2 border-dashed border-gray-300 rounded-md flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 shrink-0">
+            <label className="w-32 aspect-video border-2 border-dashed border-gray-300 rounded-md flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 shrink-0">
               {uploadingImage ? (
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-600"></div>
               ) : (

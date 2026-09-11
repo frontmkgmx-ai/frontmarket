@@ -122,7 +122,7 @@ export function StorefrontPreview({ storeName, themeId, logoUrl, headerStyle, fo
                 <div className="grid grid-cols-2 gap-2.5">
                   {[1, 2, 3, 4].map(n => (
                     <div key={n} className="rounded-xl bg-white border border-slate-200/80 p-2 shadow-2xs space-y-1.5">
-                      <div className="aspect-square bg-slate-100 rounded-lg"></div>
+                      <div className="aspect-video bg-slate-100 rounded-lg"></div>
                       <div className="h-2.5 bg-slate-200 rounded-full w-3/4"></div>
                       <div className="h-2 bg-indigo-200 rounded-full w-1/2"></div>
                     </div>
@@ -132,7 +132,7 @@ export function StorefrontPreview({ storeName, themeId, logoUrl, headerStyle, fo
             ) : (
               /* PDP Preview Mode */
               <div className={`space-y-3 ${pdpStyle === 'centered' ? 'text-center' : ''} ${pdpStyle === 'minimalist' ? 'border-0' : ''}`}>
-                <div className={`aspect-square rounded-2xl bg-slate-100 border border-slate-200/80 overflow-hidden relative ${pdpStyle === 'fullwidth' ? '-mx-4 rounded-none' : ''}`}>
+                <div className={`aspect-video rounded-2xl bg-slate-100 border border-slate-200/80 overflow-hidden relative ${pdpStyle === 'fullwidth' ? '-mx-4 rounded-none' : ''}`}>
                   <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 font-medium">
                     <span>Mídia do Produto</span>
                     <span className="text-[9px] opacity-75">Layout: {pdpStyle}</span>

@@ -2,7 +2,8 @@ import { useOutletContext, Link, useNavigate } from 'react-router';
 import { Store } from '../../types';
 import { formatCurrency } from '../../lib/utils';
 import { useCartStore } from '../../store/cartStore';
-import { Trash2, Minus, Plus, ArrowRight, ShoppingBag } from 'lucide-react';
+import { Trash2, Minus, Plus, ArrowRight, ShoppingBag, Image as ImageIcon } from 'lucide-react';
+import { StreamxImage } from '../../components/StreamxImage';
 
 export function Cart() {
   const { store } = useOutletContext<{ store: Store }>();
@@ -38,17 +39,15 @@ export function Cart() {
           <ul className="border-t border-b border-gray-200 divide-y divide-gray-200">
             {items.map((item) => (
               <li key={item.productId} className="flex py-6 sm:py-10">
-                <div className="flex-shrink-0 w-24 h-24 sm:w-32 sm:h-32 bg-gray-100 rounded-xl overflow-hidden">
+                <div className="flex-shrink-0 w-32 sm:w-48 aspect-video bg-gray-100 rounded-xl overflow-hidden flex items-center justify-center">
                   {(item as any).image ? (
-                    <img
+                    <StreamxImage
                       src={(item as any).image}
                       alt={item.name}
                       className="w-full h-full object-cover object-center"
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">
-                      Sem Imagem
-                    </div>
+                    <ImageIcon className="w-8 h-8 text-gray-400" />
                   )}
                 </div>
 

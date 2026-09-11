@@ -98,6 +98,7 @@ export interface OrderItem {
   price: number;
   quantity: number;
   sku: string;
+  isDigital?: boolean;
 }
 
 export type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded';

@@ -165,9 +165,9 @@ export function Products() {
                   <tr key={product.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="px-5 py-3.5 whitespace-nowrap">
                       <div className="flex items-center">
-                        <div className="h-10 w-10 shrink-0 bg-slate-100 rounded-lg overflow-hidden flex items-center justify-center border border-slate-200">
+                        <div className="w-16 aspect-video shrink-0 bg-slate-100 rounded-lg overflow-hidden flex items-center justify-center border border-slate-200">
                           {product.images && product.images.length > 0 ? (
-                            <StreamxImage className="h-10 w-10 object-cover" src={product.images[0]} alt="" loading="lazy" />
+                            <StreamxImage className="w-full h-full object-cover" src={product.images[0]} alt="" loading="lazy" />
                           ) : (
                             <ImageIcon className="h-4 w-4 text-slate-400" />
                           )}

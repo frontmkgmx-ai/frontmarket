@@ -34,6 +34,7 @@ export const useCartStore = create<CartState>()(
                 price: product.price,
                 sku: product.sku,
                 quantity,
+                isDigital: product.isDigital,
                 image: product.images?.[0]
               } as OrderItem & { image?: string },
             ],

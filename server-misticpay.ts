@@ -501,7 +501,7 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
             await WebhookService.finalizeEvent(db, {
               provider: 'misticpay',
               eventId,
-              status: 'reconciliation_required',
+              status: 'failed',
               metadata: {
                 orderId,
                 storeId,
@@ -510,7 +510,7 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
             });
 
             return res.status(503).json({
-              status: 'reconciliation_required',
+              status: 'failed',
               message: 'Não foi possível obter confirmação autoritativa do gateway no momento. Operação retida para reconciliação segura.',
               code: 'ACTIVE_CHECK_UNAVAILABLE'
             });

@@ -115,7 +115,7 @@ export function HomeStore() {
               to={`/${store.slug}/p/${product.slug}`} 
               className={`group flex flex-col ${currentTheme.colors.surface} border ${currentTheme.colors.border} rounded-xl sm:rounded-2xl overflow-hidden hover:border-indigo-400 hover:shadow-md transition-all`}
             >
-              <div className="aspect-square bg-slate-100 overflow-hidden relative">
+              <div className="aspect-video bg-slate-100 overflow-hidden relative">
                 {product.images && product.images.length > 0 ? (
                   <StreamxImage
                     src={product.images[0]}

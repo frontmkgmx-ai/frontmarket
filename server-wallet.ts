@@ -4,10 +4,10 @@ import { FinancialWalletService } from './server-financial-service';
 
 export function setupWalletRoutes(app: express.Express, authMiddleware: any, getDb: any) {
   /**
-   * GET /api/wallet/:storeId
+   * GET /api/finances/:storeId
    * Retorna os saldos consolidados em centavos e reais, além dos saques e extrato do ledger.
    */
-  app.get('/api/wallet/:storeId', authMiddleware, async (req: express.Request, res: express.Response) => {
+  app.get('/api/finances/:storeId', authMiddleware, async (req: express.Request, res: express.Response) => {
     const requestId = crypto.randomUUID();
     try {
       const { storeId } = req.params;
@@ -63,10 +63,10 @@ export function setupWalletRoutes(app: express.Express, authMiddleware: any, get
   });
 
   /**
-   * POST /api/wallet/:storeId/withdraw
+   * POST /api/finances/:storeId/withdraw
    * Solicita um saque com proteção de concorrência, invariantes financeiras e idempotência estrita.
    */
-  app.post('/api/wallet/:storeId/withdraw', authMiddleware, async (req: express.Request, res: express.Response) => {
+  app.post('/api/finances/:storeId/withdraw', authMiddleware, async (req: express.Request, res: express.Response) => {
     const requestId = crypto.randomUUID();
     try {
       const { storeId } = req.params;
@@ -161,10 +161,10 @@ export function setupWalletRoutes(app: express.Express, authMiddleware: any, get
   });
 
   /**
-   * GET /api/wallet/:storeId/withdrawals/:withdrawalId
+   * GET /api/finances/:storeId/withdrawals/:withdrawalId
    * Consulta os dados autorizados de um saque específico da loja com proteção de propriedade e máscara de dados.
    */
-  app.get('/api/wallet/:storeId/withdrawals/:withdrawalId', authMiddleware, async (req: express.Request, res: express.Response) => {
+  app.get('/api/finances/:storeId/withdrawals/:withdrawalId', authMiddleware, async (req: express.Request, res: express.Response) => {
     const requestId = crypto.randomUUID();
     try {
       const { storeId, withdrawalId } = req.params;
