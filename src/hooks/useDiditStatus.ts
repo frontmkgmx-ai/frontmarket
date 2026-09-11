@@ -1,138 +1,109 @@
 import { useState, useEffect, useCallback } from 'react';
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { auth, db } from '../firebase/config';
 
-// Busca o status KYC atualizado via webhook do usuário, banco de dados ou polling direto
-export function useDiditStatus(vendorData?: string) {
+export interface UseDiditStatusResult {
+  status: string | null;
+  loading: boolean;
+  error: string | null;
+  canWithdraw: boolean;
+  refresh: () => Promise<string | null>;
+}
+
+/**
+ * Hook seguro de monitoramento de KYC (FrontMarket)
+ * - Consulta o backend oficial autenticado (/api/user/kyc-status)
+ * - Escuta atualizações em tempo real no Firestore sem jamais escrever no banco a partir do cliente
+ * - Não possui timers de auto-aprovação (zero bypass)
+ */
+export function useDiditStatus(): UseDiditStatusResult {
   const [status, setStatus] = useState<string | null>(null);
-  const [documentData, setDocumentData] = useState<any>(null);
+  const [canWithdraw, setCanWithdraw] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Lê session_id da URL (caso retorne do redirect callback da Didit)
-  const queryParams = new URLSearchParams(window.location.search);
-  const urlSessionId = queryParams.get('session_id');
-
-  const fetchStatus = useCallback(async (sessionIdToPoll?: string) => {
-    if (!vendorData && !sessionIdToPoll) {
-      setLoading(false);
-      return null;
-    }
-    
+  const fetchStatus = useCallback(async (): Promise<string | null> => {
     try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        setStatus('not_started');
+        setCanWithdraw(false);
+        setLoading(false);
+        return null;
+      }
+
       setLoading(true);
-      
-      const params = new URLSearchParams();
-      if (vendorData) params.set('vendor_data', vendorData);
-      
-      const currentSessionId = sessionIdToPoll || urlSessionId;
-      if (currentSessionId) params.set('session_id', currentSessionId);
+      const token = await currentUser.getIdToken();
 
-      const resAPI = await fetch(`/api/didit/session?${params.toString()}`);
-      
-      if (!resAPI.ok) {
-        throw new Error(`HTTP error ${resAPI.status}`);
-      }
-      
-      const dataAPI = await resAPI.json();
-      
-      let finalStatus = 'pending';
-      let finalDocData = null;
-
-      if (dataAPI) {
-        if (dataAPI.api_error) {
-          console.error('Erro na API da Didit:', dataAPI.api_error);
-          finalStatus = dataAPI.status || 'pending';
-        } else if (dataAPI.status) {
-          finalStatus = dataAPI.status;
+      const res = await fetch('/api/user/kyc-status', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
         }
+      });
 
-        if (dataAPI.document_data) {
-          finalDocData = dataAPI.document_data;
-        }
+      if (!res.ok) {
+        throw new Error(`Status query failed: HTTP ${res.status}`);
       }
 
-      // --- LOGICA DE APROVAÇÃO AUTOMÁTICA EM 5 MINUTOS ---
-      if (vendorData) {
-        const LS_KEY = `kyc_pending_start_${vendorData}`;
-        
-        if (finalStatus === 'pending' || finalStatus === 'in_progress') {
-          const startedAt = localStorage.getItem(LS_KEY);
-          if (!startedAt) {
-            localStorage.setItem(LS_KEY, Date.now().toString());
-          } else {
-            const timePassed = Date.now() - parseInt(startedAt, 10);
-            const FIVE_MINUTES = 5 * 60 * 1000;
-            
-            if (timePassed >= FIVE_MINUTES) {
-              console.log('⏳ 5 minutos de espera excedidos. Aprovando automaticamente (fallback).');
-              finalStatus = 'approved';
-              localStorage.removeItem(LS_KEY); // Limpa o timer
-            }
-          }
-        } else if (finalStatus === 'approved' || finalStatus === 'declined') {
-          // Se retornou um status definitivo, limpa o timer
-          localStorage.removeItem(LS_KEY);
-        }
-      }
-      // ----------------------------------------------------
+      const data = await res.json();
+      const currentStatus = data.status || 'not_started';
 
-      // Sincroniza com o Firestore
-      if (vendorData && finalStatus) {
-        try {
-          const updatePayload: any = {
-            kyc_status: finalStatus,
-          };
-          if (currentSessionId) updatePayload.kyc_session_id = currentSessionId;
-          
-          await updateDoc(doc(db, 'users', vendorData), updatePayload);
-        } catch (e) {
-          console.warn('Erro ao sincronizar status no Firestore', e);
-        }
-      }
-
-      setStatus(finalStatus);
-      if (finalDocData) setDocumentData(finalDocData);
+      setStatus(currentStatus);
+      setCanWithdraw(Boolean(data.canWithdraw));
       setError(null);
-      
-      return finalStatus;
+      return currentStatus;
     } catch (err: any) {
+      console.warn('[useDiditStatus] Erro ao consultar status KYC no backend:', err.message);
       setError(err.message);
       return null;
     } finally {
       setLoading(false);
     }
-  }, [vendorData, urlSessionId]);
+  }, []);
 
-  // Efeito 1: Firestore Realtime Listener
+  // 1. Escuta em tempo real no Firestore para atualizações vindas de webhooks do backend
   useEffect(() => {
-    if (!vendorData) return;
-    const unsub = onSnapshot(doc(db, 'users', vendorData), (snapshot) => {
+    const targetUid = auth.currentUser?.uid;
+    if (!targetUid) {
+      setStatus('not_started');
+      setCanWithdraw(false);
+      setLoading(false);
+      return;
+    }
+
+    const unsub = onSnapshot(doc(db, 'users', targetUid), (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
-        if (data.kyc_status && data.kyc_status !== status) {
-          setStatus(data.kyc_status);
+        const firestoreStatus = data?.kyc?.status || data?.kyc_status;
+        if (firestoreStatus) {
+          const s = firestoreStatus.toLowerCase();
+          setStatus(s);
+          setCanWithdraw(s === 'approved');
         }
       }
+      setLoading(false);
+    }, (err) => {
+      console.warn('[useDiditStatus] Erro no listener do Firestore:', err.message);
+      setLoading(false);
     });
-    return () => unsub();
-  }, [vendorData, status]);
 
-  // Efeito 2: Polling da API
+    return () => unsub();
+  }, [auth.currentUser?.uid]);
+
+  // 2. Polling seguro com parada imediata em estados terminais
   useEffect(() => {
     fetchStatus();
-    
-    // Polling a cada 4 segundos para atualizar status em tempo real
+
     const interval = setInterval(async () => {
-      const currentStatus = await fetchStatus();
-      // Se já aprovou ou recusou, pode parar o polling
-      if (currentStatus === 'approved' || currentStatus === 'declined') {
+      const current = await fetchStatus();
+      if (current === 'approved' || current === 'declined' || current === 'abandoned') {
         clearInterval(interval);
       }
-    }, 4000);
-    
+    }, 5000);
+
     return () => clearInterval(interval);
   }, [fetchStatus]);
 
-  return { status, documentData, loading, error, refresh: fetchStatus };
+  return { status, loading, error, canWithdraw, refresh: fetchStatus };
 }

@@ -172,22 +172,15 @@ export function Dashboard() {
       </div>
 
       {(() => {
-        const kycStatus = (profile?.kyc_status || '').toLowerCase();
-        const verificationStatus = ((profile as any)?.verification_status || '').toLowerCase();
-        const isVerifiedBool = (profile as any)?.verified === true;
-        
-        const isApproved = isVerifiedBool || 
-          kycStatus === 'approved' || kycStatus === 'completed' || kycStatus === 'verified' || kycStatus === 'success' ||
-          verificationStatus === 'approved' || verificationStatus === 'completed' || verificationStatus === 'verified';
+        const canonicalStatus = (profile?.kyc?.status || profile?.kyc_status || '').toLowerCase().trim();
+        const isApproved = canonicalStatus === 'approved';
 
         const isPending = !isApproved && (
-          kycStatus === 'started' || kycStatus === 'pending' || kycStatus === 'in_progress' || kycStatus === 'in progress' || kycStatus === 'review' || kycStatus === 'in review' ||
-          verificationStatus === 'in_progress' || verificationStatus === 'pending_review'
+          canonicalStatus === 'in_progress' || canonicalStatus === 'started' || canonicalStatus === 'pending' || canonicalStatus === 'review'
         );
 
         const isDeclined = !isApproved && !isPending && (
-          kycStatus === 'declined' || kycStatus === 'rejected' || kycStatus === 'failed' ||
-          verificationStatus === 'declined' || verificationStatus === 'rejected'
+          canonicalStatus === 'declined' || canonicalStatus === 'rejected' || canonicalStatus === 'failed'
         );
 
         if (isApproved) {

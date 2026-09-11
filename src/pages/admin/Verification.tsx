@@ -15,130 +15,88 @@ import {
   UserCheck
 } from 'lucide-react';
 import { auth, db } from '../../firebase/config';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 
-interface KycStatus {
-  kyc_status: string;
-  session_id?: string;
-  verified_name?: string;
-  document_type?: string;
-  face_match_score?: number;
-  kyc_error?: string;
+interface KycStatusData {
+  status: string;
+  verifiedAt?: string | null;
+  canWithdraw?: boolean;
+  verifiedName?: string | null;
+  error?: string | null;
 }
 
 export function Verification() {
   const { activeStore } = useAuthStore();
-  const [kycStatus, setKycStatus] = useState<KycStatus | null>(null);
+  const [kycData, setKycData] = useState<KycStatusData>({
+    status: 'not_started'
+  });
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [modalCameraError, setModalCameraError] = useState<string | null>(null);
 
-  const fetchKycStatus = async () => {
+  // Consulta status oficial no backend autenticado
+  const fetchBackendStatus = async () => {
     try {
       const user = auth.currentUser;
-      if (!user) return;
-      
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      const userData = userDoc.data();
-      
-      setKycStatus({ 
-        kyc_status: userData?.kyc_status || 'not_started',
-        session_id: userData?.kyc_session_id,
-        kyc_error: userData?.kyc_error
-      } as any);
-      
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      const token = await user.getIdToken();
+      const res = await fetch('/api/user/kyc-status', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setKycData(prev => ({
+          ...prev,
+          status: data.status || 'not_started',
+          verifiedAt: data.verifiedAt,
+          canWithdraw: data.canWithdraw
+        }));
+      }
     } catch (err: any) {
-      console.error('Failed to fetch KYC status:', err);
+      console.warn('Erro ao carregar status do backend:', err);
     } finally {
       setLoading(false);
     }
   };
 
+  // Listener em tempo real das atualizações geradas exclusivamente pelo backend no Firestore
   useEffect(() => {
-    fetchKycStatus();
-    
-    const pollingStartTime = Date.now();
-    const FIVE_MINUTES = 5 * 60 * 1000;
-    
-    // Poll for status updates if it is in progress
-    const interval = setInterval(async () => {
-      const user = auth.currentUser;
-      if (!user) return;
-      
-      try {
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        const userData = userDoc.data();
-        const statusLower = (userData?.kyc_status || '').toLowerCase();
-        const sessionId = userData?.kyc_session_id;
+    const user = auth.currentUser;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
-        // Incluindo os status normalizados: 'pending', 'in_progress'
-        if (statusLower === 'started' || statusLower === 'pending' || statusLower === 'in_progress' || statusLower === 'in progress' || statusLower === 'awaiting user' || statusLower === 'review' || statusLower === 'in review') {
-          
-          let updatedStatus = userData?.kyc_status;
+    fetchBackendStatus();
 
-          // 1. Consultar a nova API consolidada (/api/didit/session)
-          const params = new URLSearchParams();
-          params.set('vendor_data', user.uid);
-          if (sessionId) params.set('session_id', sessionId);
-
-          try {
-            const resAPI = await fetch(`/api/didit/session?${params.toString()}`);
-            if (resAPI.ok) {
-              const dataAPI = await resAPI.json();
-              if (dataAPI.api_error) {
-                console.warn('Erro da API da Didit (mantendo fallback):', dataAPI.api_error);
-                updatedStatus = dataAPI.status || 'pending';
-              } else if (dataAPI && dataAPI.status) {
-                updatedStatus = dataAPI.status;
-                const newStatusLower = updatedStatus.toLowerCase();
-                
-                if (newStatusLower !== statusLower) {
-                  await setDoc(doc(db, 'users', user.uid), {
-                    kyc_status: updatedStatus
-                  }, { merge: true });
-                }
-              }
-            }
-          } catch (e) {
-            console.warn('Erro ao consultar status na nova API de sessão', e);
-          }
-
-          // 2. Fallback de Aprovação Automática após 5 minutos
-          const currentStatusLower = (updatedStatus || '').toLowerCase();
-          if (currentStatusLower !== 'approved' && currentStatusLower !== 'declined') {
-            const sessionCreatedAt = userData?.kyc_session_created_at || pollingStartTime;
-            if (Date.now() - sessionCreatedAt > FIVE_MINUTES) {
-              updatedStatus = 'approved';
-              await setDoc(doc(db, 'users', user.uid), {
-                kyc_status: 'approved',
-                kyc_fallback_applied: true
-              }, { merge: true });
-            }
-          }
-
-          // Atualiza a tela
-          setKycStatus({ 
-            kyc_status: updatedStatus || 'not_started',
-            session_id: sessionId,
-            kyc_error: userData?.kyc_error
-          } as any);
-          
-        } else {
-          // Se já está aprovado/recusado, apenas garante que a tela está sincronizada e para de chamar a API
-          setKycStatus({ 
-            kyc_status: userData?.kyc_status || 'not_started',
-            session_id: sessionId,
-            kyc_error: userData?.kyc_error
-          } as any);
-        }
-      } catch (e) {
-        console.error('Polling error', e);
+    const unsub = onSnapshot(doc(db, 'users', user.uid), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        const currentStatus = data?.kyc?.status || data?.kyc_status || 'not_started';
+        
+        setKycData(prev => ({
+          ...prev,
+          status: currentStatus.toLowerCase(),
+          verifiedName: data?.verified_name,
+          error: data?.kyc_error
+        }));
       }
-    }, 4000);
-    
-    return () => clearInterval(interval);
+      setLoading(false);
+    }, (err) => {
+      console.warn('Listener error:', err);
+      setLoading(false);
+    });
+
+    return () => unsub();
   }, []);
 
   const handleRequestKycStart = () => {
@@ -153,9 +111,9 @@ export function Verification() {
     try {
       setStarting(true);
       setModalCameraError(null);
+      setError(null);
       
       if (!isForced) {
-        // Solicitar permissão de câmera explicitamente
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
           throw new Error('Seu navegador não possui suporte para captura de vídeo pela câmera. Se estiver usando iframe, tente forçar a abertura.');
         }
@@ -163,11 +121,10 @@ export function Verification() {
         let stream: MediaStream;
         try {
           stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          // Libera a câmera temporária após confirmação
           stream.getTracks().forEach(track => track.stop());
         } catch (camErr: any) {
           if (camErr.name === 'NotAllowedError' || camErr.name === 'PermissionDeniedError') {
-            throw new Error('Permissão negada. Por favor, clique no ícone de cadeado/câmera na barra de endereço do seu navegador e autorize o uso da câmera. Se a opção não estiver disponível (por exemplo, em domínio redirecionado/iframe), tente forçar a abertura clicando no botão abaixo.');
+            throw new Error('Permissão negada. Por favor, autorize o uso da câmera para a validação biométrica.');
           } else if (camErr.name === 'NotFoundError' || camErr.name === 'DevicesNotFoundError') {
             throw new Error('Nenhuma câmera foi detectada no seu dispositivo. Conecte uma câmera para continuar.');
           } else {
@@ -176,87 +133,42 @@ export function Verification() {
         }
       }
 
-      // Usuário concedeu acesso à câmera ou forçou bypass; fecha modal e gera sessão segura
       setShowCameraModal(false);
 
       const user = auth.currentUser;
-      if (!user) return;
+      if (!user) {
+        throw new Error('Usuário não autenticado.');
+      }
       const token = await user.getIdToken();
       
-      const apiUrl = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${apiUrl}/api/user/start-kyc`, {
+      const res = await fetch('/api/user/start-kyc', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ uid: user.uid })
+        }
       });
       
+      const data = await res.json();
+      
       if (!res.ok) {
-        let errorMsg = `Erro ${res.status} ao iniciar verificação`;
-        try {
-          const errText = await res.text();
-          if (errText) {
-            try {
-              const errData = JSON.parse(errText);
-              errorMsg = errData.error || errorMsg;
-            } catch (e) {
-              errorMsg = errText;
-            }
-          }
-        } catch (e) {
-          // Fallback message
-        }
-        throw new Error(errorMsg);
-      }
-      
-      const resText = await res.text();
-      let data;
-      try {
-        data = JSON.parse(resText);
-      } catch (e) {
-        throw new Error(`Resposta inválida do servidor: ${resText.substring(0, 100)}`);
-      }
-      
-      // Save the new session to Firestore directly from the client
-      if (data.session_id) {
-        await setDoc(doc(db, 'users', user.uid), {
-          kyc_session_id: data.session_id,
-          kyc_session_created_at: Date.now(),
-          kyc_status: 'In Progress'
-        }, { merge: true });
+        throw new Error(data.error || 'Erro ao gerar sessão de verificação.');
       }
       
       if (data.verification_url) {
-        // Redirecionar para URL única e criptografada do Didit (quebra iframe caso exista)
+        // Redireciona para o fluxo da Didit de forma segura
         if (window.top) {
           window.top.location.href = data.verification_url;
         } else {
           window.location.href = data.verification_url;
         }
+      } else {
+        throw new Error('Link de verificação não retornado pelo servidor.');
       }
     } catch (err: any) {
       setModalCameraError(err.message || 'Ocorreu um erro ao autorizar a câmera.');
       setError(err.message || 'Ocorreu um erro ao conectar ao sistema de verificação.');
       setStarting(false);
-    }
-  };
-
-  const resetVerification = async () => {
-    try {
-      setLoading(true);
-      const user = auth.currentUser;
-      if (!user) return;
-      await setDoc(doc(db, 'users', user.uid), {
-        kyc_status: 'not_started',
-        kyc_session_id: null
-      }, { merge: true });
-      setKycStatus({ kyc_status: 'not_started' } as any);
-    } catch (err: any) {
-      console.error(err);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -268,13 +180,12 @@ export function Verification() {
     );
   }
 
-  const statusLower = (kycStatus?.kyc_status || 'not_started').toLowerCase();
+  const statusLower = kycData.status.toLowerCase();
 
-  // Normalized Statuses + Legacy Fallbacks
-  const isApproved = statusLower === 'approved' || statusLower === 'completed' || statusLower === 'verified' || statusLower === 'success';
-  const isDeclined = statusLower === 'declined' || statusLower === 'rejected' || statusLower === 'failed';
-  const isReview = statusLower === 'in_progress' || statusLower === 'review' || statusLower === 'in review';
-  const isPending = statusLower === 'pending' || statusLower === 'waiting' || statusLower === 'awaiting user' || statusLower === 'started' || statusLower === 'in progress';
+  const isApproved = statusLower === 'approved';
+  const isDeclined = statusLower === 'declined';
+  const isReview = statusLower === 'review';
+  const isPending = statusLower === 'in_progress' || statusLower === 'started';
   const isNotStarted = !isApproved && !isDeclined && !isReview && !isPending;
 
   return (
@@ -283,10 +194,10 @@ export function Verification() {
         <div>
           <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
             <ShieldCheck className="w-6 h-6 text-teal-600" />
-            Verificação de Identidade
+            Verificação de Identidade (KYC)
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            Mantenha sua conta segura validando seus documentos com a plataforma oficial.
+            Validação oficial de documentação e biometria para habilitação de saques.
           </p>
         </div>
       </div>
@@ -296,39 +207,35 @@ export function Verification() {
         {/* State: Approved */}
         {isApproved && (
           <div className="p-8 text-center bg-gradient-to-br from-emerald-50 to-teal-50/30">
-            <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-white shadow-lg animate-[bounce_1s_ease-in-out]">
+            <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-white shadow-lg">
               <CheckCircle2 className="w-10 h-10 text-emerald-600" />
             </div>
-            <h2 className="text-2xl font-bold text-slate-800 mb-2">Conta Verificada e Aprovada</h2>
-            <p className="text-slate-600 max-w-md mx-auto mb-8">
-              Sua documentação está regularizada no sistema. A segurança de sua conta está garantida através do provedor oficial.
+            <h2 className="text-2xl font-bold text-slate-800 mb-2">Conta Verificada com Sucesso</h2>
+            <p className="text-slate-600 max-w-md mx-auto mb-8 text-sm">
+              Sua documentação e biometria foram autenticadas com sucesso. Sua conta está habilitada para solicitar saques via Pix.
             </p>
             
             <div className="max-w-sm mx-auto bg-white rounded-xl border border-emerald-100 shadow-sm text-left overflow-hidden">
               <div className="bg-emerald-600/10 px-4 py-2 border-b border-emerald-100">
                 <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1">
-                  <ShieldCheck className="w-4 h-4" /> Resumo da Validação Didit
+                  <ShieldCheck className="w-4 h-4" /> Status da Validação
                 </span>
               </div>
               <div className="p-4 space-y-3">
-                <div>
-                  <span className="block text-[10px] uppercase font-bold text-slate-400">Nome Reconhecido (OCR)</span>
-                  <span className="text-sm font-semibold text-slate-800">{kycStatus.verified_name || 'Validado'}</span>
-                </div>
-                <div>
-                  <span className="block text-[10px] uppercase font-bold text-slate-400">Tipo Símbolo</span>
-                  <span className="text-sm font-semibold text-slate-800">{kycStatus.document_type || 'Documento Oficial'}</span>
-                </div>
-                {kycStatus.face_match_score && (
+                {kycData.verifiedName && (
                   <div>
-                    <span className="block text-[10px] uppercase font-bold text-slate-400">Score de Semelhança (Biometria)</span>
-                    <span className="text-sm font-semibold text-slate-800">{kycStatus.face_match_score.toFixed(1)}% Precisão</span>
+                    <span className="block text-[10px] uppercase font-bold text-slate-400">Titular Validado</span>
+                    <span className="text-sm font-semibold text-slate-800">{kycData.verifiedName}</span>
                   </div>
                 )}
                 <div>
-                  <span className="block text-[10px] uppercase font-bold text-slate-400">Selo Oficial</span>
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 mt-0.5">
-                    DIDIT OK
+                  <span className="block text-[10px] uppercase font-bold text-slate-400">Provedor Oficial</span>
+                  <span className="text-sm font-semibold text-slate-800">Didit Identity Protocol</span>
+                </div>
+                <div>
+                  <span className="block text-[10px] uppercase font-bold text-slate-400">Situação Cadastral</span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 mt-0.5">
+                    Habilitado para Saques
                   </span>
                 </div>
               </div>
@@ -344,32 +251,32 @@ export function Verification() {
                 <div className="bg-red-50 p-4 rounded-xl border border-red-100 flex items-start gap-3">
                   <XCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
                   <div>
-                    <h3 className="text-sm font-bold text-red-900">Verificação Reprovada</h3>
+                    <h3 className="text-sm font-bold text-red-900">Verificação Não Aprovada</h3>
                     <p className="text-xs text-red-700 mt-1">
-                      {kycStatus?.kyc_error || 'Não foi possível aprovar sua documentação na última tentativa. Certifique-se de usar fotos nítidas, em ambiente iluminado e um documento válido (RG ou CNH).'}
+                      {kycData.error || 'Não foi possível aprovar os documentos na tentativa anterior. Por favor, certifique-se de apresentar foto nítida e documento original do titular.'}
                     </p>
                   </div>
                 </div>
               ) : (
                 <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
                   <AlertTriangle className="w-3.5 h-3.5 mr-1.5" />
-                  Conta não verificada
+                  Verificação Pendente
                 </div>
               )}
               
-              <h2 className="text-xl font-bold text-slate-800">Complete sua verificação (KYC)</h2>
+              <h2 className="text-xl font-bold text-slate-800">Validação de Identidade para Saques</h2>
               <p className="text-sm text-slate-600 leading-relaxed">
-                Para aumentar a segurança do ecossistema e validar seus dados de lojista, precisamos confirmar sua identidade através de foto do documento (frente e verso) e uma rápida leitura biométrica facial (Liveness).
+                Em conformidade com as diretrizes regulatórias e de segurança da plataforma, a realização de saques exige a verificação de documento oficial com foto (RG ou CNH) e biometria facial (Liveness).
               </p>
               
               <ul className="text-sm text-slate-600 space-y-2 mt-4">
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                  <span>Ambiente criptografado e certificado (Link único, expira em 5 mins).</span>
+                  <span>Ambiente criptografado ponta a ponta com link de sessão único.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                  <span>Análise de dados automática, OCR e Face Match pela Didit.</span>
+                  <span>Processamento biométrico antifraude seguro via Didit.</span>
                 </li>
               </ul>
               
@@ -388,7 +295,7 @@ export function Verification() {
                   {starting ? (
                     <>
                       <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      Gerando Link Seguro...
+                      Gerando Sessão Segura...
                     </>
                   ) : (
                     <>
@@ -401,25 +308,25 @@ export function Verification() {
             
             <div className="w-full md:w-1/3">
               <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 shadow-inner">
-                <h3 className="text-sm font-bold text-slate-800 mb-4 text-center">Processo Rápido</h3>
+                <h3 className="text-sm font-bold text-slate-800 mb-4 text-center">Etapas do Processo</h3>
                 <div className="space-y-4">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
                       <span className="text-xs font-bold text-indigo-700">1</span>
                     </div>
-                    <span className="text-xs font-semibold text-slate-600">Foto do Documento CNH/RG</span>
+                    <span className="text-xs font-semibold text-slate-600">Documento Oficial (CNH / RG)</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
                       <span className="text-xs font-bold text-indigo-700">2</span>
                     </div>
-                    <span className="text-xs font-semibold text-slate-600">Biometria Facial Ao Vivo</span>
+                    <span className="text-xs font-semibold text-slate-600">Biometria Facial (Liveness)</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
                       <span className="text-xs font-bold text-indigo-700">3</span>
                     </div>
-                    <span className="text-xs font-semibold text-slate-600">Validação Instantânea</span>
+                    <span className="text-xs font-semibold text-slate-600">Liberação Imediata de Saques</span>
                   </div>
                 </div>
               </div>
@@ -434,18 +341,18 @@ export function Verification() {
               <Clock className="w-8 h-8 text-blue-600" />
             </div>
             <h2 className="text-xl font-bold text-slate-800 mb-2">
-              {isReview ? 'Em Análise Manual' : 'Verificação Incompleta ou em Andamento'}
+              {isReview ? 'Em Análise pelo Provedor' : 'Verificação em Andamento'}
             </h2>
-            <p className="text-slate-600 max-w-md mx-auto mb-6">
+            <p className="text-slate-600 max-w-md mx-auto mb-6 text-sm">
               {isReview 
-                ? 'Sua documentação está passando por uma revisão de segurança final por nossa equipe. Você será notificado em breve.'
-                : 'Você iniciou o processo de verificação. Caso tenha saído sem concluir (ex: enviou os documentos mas não finalizou a etapa facial), clique no botão abaixo para continuar de onde parou.'}
+                ? 'Os seus documentos estão em processo de validação de segurança. Assim que for concluído, o status será atualizado automaticamente.'
+                : 'Você possui uma sessão de verificação ativa. Se você fechou a janela anterior ou precisa reiniciar o envio, clique abaixo:'}
             </p>
             
             <div className="flex flex-col items-center justify-center gap-4">
               <div className="inline-flex items-center justify-center px-4 py-2 bg-slate-100 rounded-lg text-sm font-semibold text-slate-700">
                 <Loader2 className="w-4 h-4 mr-2 animate-spin text-slate-500" />
-                Aguardando provedor KYC...
+                Aguardando confirmação do provedor...
               </div>
 
               {isPending && (
@@ -458,21 +365,14 @@ export function Verification() {
                     {starting ? (
                       <>
                         <Loader2 className="w-5 h-5 animate-spin" />
-                        Preparando ambiente...
+                        Conectando...
                       </>
                     ) : (
                       <>
-                        Continuar Verificação
+                        Continuar ou Reiniciar Verificação
                         <ArrowRight className="w-5 h-5" />
                       </>
                     )}
-                  </button>
-                  <button
-                    onClick={resetVerification}
-                    disabled={starting}
-                    className="w-full sm:w-auto inline-flex items-center justify-center px-6 py-3 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-semibold border border-slate-200 transition-all hover:shadow-sm active:scale-95 disabled:opacity-70 disabled:pointer-events-none"
-                  >
-                    Cancelar e Recomeçar
                   </button>
                 </div>
               )}
@@ -482,27 +382,25 @@ export function Verification() {
 
       </div>
 
-      {/* Diálogo / Modal de Permissão de Câmera */}
+      {/* Modal de Permissão de Câmera */}
       {showCameraModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div 
             className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col transition-all transform animate-in zoom-in-95 duration-200"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="camera-dialog-title"
           >
-            {/* Header */}
             <div className="relative px-6 pt-6 pb-4 flex items-start justify-between border-b border-slate-100">
               <div className="flex items-center gap-3">
                 <div className="w-11 h-11 rounded-xl bg-teal-50 border border-teal-100 flex items-center justify-center text-teal-600 shadow-sm shrink-0">
                   <Camera className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 id="camera-dialog-title" className="text-lg font-bold text-slate-900">
-                    Permissão de Acesso à Câmera
+                  <h3 className="text-lg font-bold text-slate-900">
+                    Acesso à Câmera para Biometria
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Verificação Obrigatória de Identidade (KYC)
+                    Verificação Oficial de Identidade
                   </p>
                 </div>
               </div>
@@ -516,10 +414,9 @@ export function Verification() {
               </button>
             </div>
 
-            {/* Content */}
             <div className="p-6 space-y-4 text-slate-600 text-sm">
               <p className="leading-relaxed text-slate-700">
-                Para iniciar a verificação de segurança, a plataforma necessita de autorização para utilizar a câmera do seu dispositivo:
+                A etapa de validação necessita de acesso à câmera do seu dispositivo:
               </p>
 
               <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200/80">
@@ -528,8 +425,8 @@ export function Verification() {
                     <ShieldCheck className="w-4 h-4" />
                   </div>
                   <div>
-                    <strong className="block text-slate-800 text-xs font-semibold">Captura de Documentos</strong>
-                    <span className="text-xs text-slate-600">Fotos nítidas da frente e do verso de documento com foto (RG ou CNH).</span>
+                    <strong className="block text-slate-800 text-xs font-semibold">Captura do Documento</strong>
+                    <span className="text-xs text-slate-600">Fotos nítidas da frente e do verso de RG ou CNH.</span>
                   </div>
                 </div>
 
@@ -538,8 +435,8 @@ export function Verification() {
                     <UserCheck className="w-4 h-4" />
                   </div>
                   <div>
-                    <strong className="block text-slate-800 text-xs font-semibold">Biometria Facial Ao Vivo</strong>
-                    <span className="text-xs text-slate-600">Comprovação de vivacidade (Liveness) para confirmar que você é o titular legítimo.</span>
+                    <strong className="block text-slate-800 text-xs font-semibold">Biometria Facial em Tempo Real</strong>
+                    <span className="text-xs text-slate-600">Comprovação de vivacidade para proteger sua conta contra invasões e fraudes.</span>
                   </div>
                 </div>
 
@@ -548,8 +445,8 @@ export function Verification() {
                     <Lock className="w-4 h-4" />
                   </div>
                   <div>
-                    <strong className="block text-slate-800 text-xs font-semibold">Privacidade & Criptografia</strong>
-                    <span className="text-xs text-slate-600">Imagens transmitidas em canal seguro certificado e utilizadas apenas para validação.</span>
+                    <strong className="block text-slate-800 text-xs font-semibold">Segurança & Privacidade</strong>
+                    <span className="text-xs text-slate-600">Dados processados sob sigilo exclusivo para validação cadastral.</span>
                   </div>
                 </div>
               </div>
@@ -563,13 +460,8 @@ export function Verification() {
                   <p>{modalCameraError}</p>
                 </div>
               )}
-
-              <p className="text-xs text-slate-500">
-                Ao clicar no botão abaixo, o seu navegador poderá exibir uma solicitação no topo da tela. Clique em <strong>"Permitir"</strong> para continuar.
-              </p>
             </div>
 
-            {/* Footer Actions */}
             <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row flex-wrap items-center justify-end gap-3">
               <button
                 type="button"
@@ -577,7 +469,7 @@ export function Verification() {
                 disabled={starting}
                 className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 font-semibold text-xs transition-all disabled:opacity-60"
               >
-                Agora Não / Cancelar
+                Cancelar
               </button>
 
               <button
@@ -589,26 +481,15 @@ export function Verification() {
                 {starting ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Solicitando permissão...
+                    Iniciando...
                   </>
                 ) : (
                   <>
                     <Camera className="w-4 h-4" />
-                    Permitir e Iniciar Verificação
+                    Autorizar e Prosseguir
                   </>
                 )}
               </button>
-              
-              {modalCameraError && (
-                <button
-                  type="button"
-                  onClick={() => handleConfirmCameraAndStart(true)}
-                  disabled={starting}
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs shadow-sm hover:shadow transition-all disabled:opacity-60 mt-2 sm:mt-0"
-                >
-                  Forçar abertura em tela cheia
-                </button>
-              )}
             </div>
           </div>
         </div>
@@ -616,4 +497,3 @@ export function Verification() {
     </div>
   );
 }
-

@@ -9,9 +9,44 @@
         "email": { "type": "string" },
         "role": { "type": "string", "enum": ["merchant", "customer", "admin"] },
         "stores": { "type": "array" },
+        "kyc": { "type": "object" },
+        "kyc_status": { "type": "string" },
+        "verified": { "type": "boolean" },
         "createdAt": { "type": "string" }
       },
       "required": ["email", "role"]
+    },
+    "KycSession": {
+      "title": "KycSession",
+      "description": "Sessão de verificação de identidade Didit vinculada ao usuário",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string" },
+        "uid": { "type": "string" },
+        "provider": { "type": "string", "enum": ["didit"] },
+        "status": { "type": "string" },
+        "eventVersion": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "completedAt": { "type": "string" }
+      },
+      "required": ["sessionId", "uid", "provider", "status"]
+    },
+    "KycWebhookEvent": {
+      "title": "KycWebhookEvent",
+      "description": "Registro idempotente de evento de webhook recebido do provedor KYC",
+      "type": "object",
+      "properties": {
+        "eventId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "uid": { "type": "string" },
+        "status": { "type": "string" },
+        "webhookType": { "type": "string" },
+        "authMethod": { "type": "string" },
+        "receivedAt": { "type": "string" },
+        "processedAt": { "type": "string" }
+      },
+      "required": ["eventId", "status"]
     },
     "Store": {
       "title": "Store",
@@ -108,12 +143,102 @@
         "active": { "type": "boolean" }
       },
       "required": ["code", "discountType", "value", "active"]
+    },
+    "Wallet": {
+      "title": "Wallet",
+      "description": "Estado consolidado da carteira financeira em centavos",
+      "type": "object",
+      "properties": {
+        "pendingBalanceCents": { "type": "number" },
+        "availableBalanceCents": { "type": "number" },
+        "reservedBalanceCents": { "type": "number" },
+        "totalReceivedCents": { "type": "number" },
+        "totalWithdrawnCents": { "type": "number" },
+        "currency": { "type": "string" },
+        "version": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["pendingBalanceCents", "availableBalanceCents", "reservedBalanceCents", "totalReceivedCents", "totalWithdrawnCents", "currency", "version"]
+    },
+    "WalletLedger": {
+      "title": "WalletLedger",
+      "description": "Registro imutável de evento contábil da carteira",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "storeId": { "type": "string" },
+        "type": { "type": "string" },
+        "amountCents": { "type": "number" },
+        "feeCents": { "type": "number" },
+        "netAmountCents": { "type": "number" },
+        "currency": { "type": "string" },
+        "balanceBucket": { "type": "string" },
+        "referenceType": { "type": "string" },
+        "referenceId": { "type": "string" },
+        "idempotencyKey": { "type": "string" },
+        "metadata": { "type": "object" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["storeId", "type", "amountCents", "currency", "balanceBucket", "referenceType", "referenceId", "idempotencyKey"]
+    },
+    "Withdrawal": {
+      "title": "Withdrawal",
+      "description": "Solicitação de saque da loja",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "storeId": { "type": "string" },
+        "amountCents": { "type": "number" },
+        "feeCents": { "type": "number" },
+        "totalDeductedCents": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "processing", "completed", "failed", "cancelled"] },
+        "pixKey": { "type": "string" },
+        "pixKeyType": { "type": "string" },
+        "gateway": { "type": "string" },
+        "idempotencyKey": { "type": "string" },
+        "misticTransactionId": { "type": "string" },
+        "failureReason": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["storeId", "amountCents", "feeCents", "totalDeductedCents", "status", "pixKey", "pixKeyType", "idempotencyKey"]
+    },
+    "PaymentRelease": {
+      "title": "PaymentRelease",
+      "description": "Programação de liberação financeira D+3 (72h) de pedido pago",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "storeId": { "type": "string" },
+        "orderId": { "type": "string" },
+        "amountCents": { "type": "number" },
+        "feeCents": { "type": "number" },
+        "netAmountCents": { "type": "number" },
+        "currency": { "type": "string", "enum": ["BRL"] },
+        "paymentMethod": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "released", "blocked", "cancelled"] },
+        "confirmedAt": { "type": "string" },
+        "releaseAt": { "type": "string" },
+        "releasedAt": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["storeId", "orderId", "amountCents", "netAmountCents", "status", "confirmedAt", "releaseAt"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": "UserProfile",
       "description": "Perfis de usuários do sistema"
+    },
+    "/users/{userId}/kycSessions/{sessionId}": {
+      "schema": "KycSession",
+      "description": "Sessões e histórico de verificação de identidade do usuário"
+    },
+    "/kyc_webhook_events/{eventId}": {
+      "schema": "KycWebhookEvent",
+      "description": "Registro de auditoria e controle de idempotência dos webhooks KYC"
     },
     "/stores/{storeId}": {
       "schema": "Store",
@@ -138,6 +263,22 @@
     "/stores/{storeId}/coupons/{couponId}": {
       "schema": "Coupon",
       "description": "Cupons de desconto da loja"
+    },
+    "/stores/{storeId}/wallet/{walletId}": {
+      "schema": "Wallet",
+      "description": "Estado consolidado da carteira financeira em centavos"
+    },
+    "/stores/{storeId}/walletLedger/{ledgerId}": {
+      "schema": "WalletLedger",
+      "description": "Livro razão imutável de eventos e lançamentos financeiros"
+    },
+    "/stores/{storeId}/withdrawals/{withdrawalId}": {
+      "schema": "Withdrawal",
+      "description": "Solicitações de saque da loja"
+    },
+    "/stores/{storeId}/paymentReleases/{releaseId}": {
+      "schema": "PaymentRelease",
+      "description": "Programação e histórico de liquidações financeiras D+3 (72h) de pedidos da loja"
     }
   }
 }

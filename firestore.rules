@@ -11,18 +11,80 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated() && request.auth.uid == userId;
+      // Usuário autenticado só pode ler seus próprios dados de perfil e KYC
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      
+      // Proteção rigorosa de campos de identidade, roles e KYC:
+      // O usuário nunca pode auto-promover para admin, superadmin ou auto-aprovar KYC
+      allow create: if isAuthenticated() && request.auth.uid == userId && (
+        (!('role' in request.resource.data) || request.resource.data.role in ['merchant', 'seller', 'user']) &&
+        (!('isAdmin' in request.resource.data) || request.resource.data.isAdmin == false) &&
+        !('isSuperAdmin' in request.resource.data) &&
+        !('permissions' in request.resource.data) &&
+        !('kyc' in request.resource.data) &&
+        (!('kyc_status' in request.resource.data) || request.resource.data.kyc_status == 'not_started') &&
+        (!('verified' in request.resource.data) || request.resource.data.verified == false) &&
+        (!('verification_status' in request.resource.data) || request.resource.data.verification_status == 'not_started') &&
+        !('kyc_session_id' in request.resource.data) &&
+        !('kyc_cpf_hash' in request.resource.data) &&
+        !('kyc_approved_at' in request.resource.data) &&
+        !('kyc_declined_at' in request.resource.data)
+      );
+
+      // Usuário não pode modificar nenhum campo de role administrativo, KYC ou decisão de verificação
+      allow update: if isAuthenticated() && request.auth.uid == userId && (
+        request.resource.data.get('role', 'merchant') == resource.data.get('role', 'merchant') &&
+        request.resource.data.get('isAdmin', false) == resource.data.get('isAdmin', false) &&
+        request.resource.data.get('isSuperAdmin', false) == resource.data.get('isSuperAdmin', false) &&
+        request.resource.data.get('permissions', null) == resource.data.get('permissions', null) &&
+        request.resource.data.get('kyc', null) == resource.data.get('kyc', null) &&
+        request.resource.data.get('kyc_status', null) == resource.data.get('kyc_status', null) &&
+        request.resource.data.get('verified', null) == resource.data.get('verified', null) &&
+        request.resource.data.get('verification_status', null) == resource.data.get('verification_status', null) &&
+        request.resource.data.get('kyc_session_id', null) == resource.data.get('kyc_session_id', null) &&
+        request.resource.data.get('kyc_cpf_hash', null) == resource.data.get('kyc_cpf_hash', null) &&
+        request.resource.data.get('kyc_approved_at', null) == resource.data.get('kyc_approved_at', null) &&
+        request.resource.data.get('kyc_declined_at', null) == resource.data.get('kyc_declined_at', null) &&
+        request.resource.data.get('kyc_last_event_id', null) == resource.data.get('kyc_last_event_id', null) &&
+        request.resource.data.get('verified_name', null) == resource.data.get('verified_name', null)
+      );
+
       allow delete: if false;
+
+      // Subcoleções de KYC e Sessões: Apenas leitura pelo proprietário. Escrita exclusivamente via backend Admin SDK.
+      match /kycSessions/{sessionId} {
+        allow read: if isAuthenticated() && request.auth.uid == userId;
+        allow write: if false;
+      }
+
+      match /kyc_activities/{activityId} {
+        allow read: if isAuthenticated() && request.auth.uid == userId;
+        allow write: if false;
+      }
+
+      match /kyc_transactions/{txId} {
+        allow read: if isAuthenticated() && request.auth.uid == userId;
+        allow write: if false;
+      }
+    }
+
+    // Coleção de Eventos de Webhook KYC: Estritamente inacessível pelo cliente (backend-only)
+    match /kyc_webhook_events/{eventId} {
+      allow read, write: if false;
+    }
+
+    // Coleção Unificada de Auditoria e Idempotência de Webhooks (Backend-Only)
+    match /webhookEvents/{eventId} {
+      allow read, write: if false;
     }
     
     match /stores/{storeId} {
       allow read: if true;
       allow create: if isAuthenticated() && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if isAuthenticated() && (
-        resource.data.ownerId == request.auth.uid ||
-        request.resource.data.ownerId == request.auth.uid
-      );
+      allow update: if isAuthenticated() &&
+        resource.data.ownerId == request.auth.uid &&
+        request.resource.data.ownerId == request.auth.uid;
+      allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
       
       match /members/{memberId} {
         allow read, write: if isStoreOwner(storeId);
@@ -36,14 +98,39 @@ service cloud.firestore {
         allow write: if isStoreOwner(storeId);
       }
       match /orders/{orderId} {
-        allow create: if true;
         allow read: if isStoreOwner(storeId) || (
           isAuthenticated() && resource.data.customerId == request.auth.uid
         );
-        allow update, delete: if isStoreOwner(storeId);
+        // REGRA DE SEGURANÇA: Cliente não pode criar pedido já marcado como pago ou com identificadores financeiros forjados
+        allow create: if (
+          request.resource.data.status == 'pending' &&
+          !('paidAt' in request.resource.data) &&
+          !('misticTransactionId' in request.resource.data)
+        );
+        // REGRA DE SEGURANÇA: O vendedor ou cliente NÃO pode alterar status para 'paid', nem alterar valores financeiros
+        allow update: if isStoreOwner(storeId) &&
+          request.resource.data.status != 'paid' &&
+          request.resource.data.total == resource.data.total &&
+          request.resource.data.subtotal == resource.data.subtotal &&
+          request.resource.data.get('paidAt', null) == resource.data.get('paidAt', null) &&
+          request.resource.data.get('misticTransactionId', null) == resource.data.get('misticTransactionId', null) &&
+          request.resource.data.get('gateway', null) == resource.data.get('gateway', null);
+        // Pedidos com pagamento confirmado nunca podem ser excluídos pelo cliente
+        allow delete: if isStoreOwner(storeId) && resource.data.status != 'paid';
       }
       match /customers/{customerId} {
-        allow read, create, update: if true;
+        // Dados de clientes protegidos: apenas o proprietário da loja ou o próprio cliente autenticado
+        allow read: if isStoreOwner(storeId) || (
+          isAuthenticated() && (request.auth.uid == customerId || resource.data.get('userId', '') == request.auth.uid)
+        );
+        // Criação e atualização direta pelo cliente não podem definir nem alterar credenciais/senhas
+        allow create: if (isStoreOwner(storeId) || (
+          isAuthenticated() && (request.auth.uid == customerId || request.resource.data.get('userId', '') == request.auth.uid)
+        )) && !('password' in request.resource.data) && !('passwordHash' in request.resource.data);
+        allow update: if (isStoreOwner(storeId) || (
+          isAuthenticated() && (request.auth.uid == customerId || resource.data.get('userId', '') == request.auth.uid)
+        )) && !('password' in request.resource.data) &&
+          request.resource.data.get('passwordHash', null) == resource.data.get('passwordHash', null);
         allow delete: if isStoreOwner(storeId);
       }
       match /coupons/{couponId} {
@@ -72,6 +159,10 @@ service cloud.firestore {
         allow write: if false;
       }
       match /walletLedger/{ledgerId} {
+        allow read: if isStoreOwner(storeId);
+        allow write: if false;
+      }
+      match /paymentReleases/{releaseId} {
         allow read: if isStoreOwner(storeId);
         allow write: if false;
       }

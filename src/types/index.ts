@@ -5,10 +5,21 @@ export interface UserProfile {
   createdAt?: string;
   role?: string;
   stores?: string[]; // IDs of stores this user is part of
+  kyc?: {
+    status?: string;
+    provider?: string;
+    currentSessionId?: string | null;
+    verifiedAt?: any;
+    declinedAt?: any;
+    lastEventId?: string;
+    updatedAt?: any;
+  };
   kyc_status?: string;
   kyc_session_id?: string;
   kyc_session_created_at?: number;
   kyc_error?: string;
+  verified?: boolean;
+  verified_name?: string;
 }
 
 export interface Store {
@@ -108,7 +119,6 @@ export interface Customer {
   storeId: string;
   username: string;
   usernameLower: string;
-  password?: string;
   name: string;
   email?: string;
   cpf: string;

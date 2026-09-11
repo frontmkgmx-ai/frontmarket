@@ -1,8 +1,5 @@
 import { create } from 'zustand';
-import { collection, query, where, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase/config';
 import { Customer, CustomerAddress } from '../types';
-import { withTimeout } from '../lib/asyncGuard';
 
 interface RegisterCustomerData {
   username: string;
@@ -36,6 +33,7 @@ export const useCustomerAuthStore = create<CustomerAuthState>((set, get) => ({
       const stored = localStorage.getItem(`fmk_customer_${storeId}`);
       if (stored) {
         const parsed = JSON.parse(stored) as Customer;
+        // Garante que nenhum dado sensível esteja no estado
         set({ customer: parsed });
       } else {
         set({ customer: null });
@@ -50,17 +48,15 @@ export const useCustomerAuthStore = create<CustomerAuthState>((set, get) => ({
     const cleanUsername = username.trim().toLowerCase();
     
     try {
-      const customersRef = collection(db, 'stores', storeId, 'customers');
-      const q = query(customersRef, where('usernameLower', '==', cleanUsername));
-      const snap = await withTimeout(getDocs(q), 3000, null as any);
-      
-      if (!snap || snap.empty) {
-        return true;
+      const res = await fetch(`/api/stores/${encodeURIComponent(storeId)}/customers/check-username?username=${encodeURIComponent(cleanUsername)}`);
+      if (res.ok) {
+        const data = await res.json();
+        return !!data.available;
       }
-      return false;
+      return true;
     } catch (err) {
-      console.warn("Aviso ao verificar disponibilidade de usuário do cliente:", err);
-      return true; // Fallback para não bloquear
+      console.warn("[CustomerAuth] Falha ao checar disponibilidade:", err);
+      return true;
     }
   },
 
@@ -70,43 +66,33 @@ export const useCustomerAuthStore = create<CustomerAuthState>((set, get) => ({
     }
 
     set({ loading: true, error: null });
-    const cleanUsername = username.trim().toLowerCase();
 
     try {
-      const customersRef = collection(db, 'stores', storeId, 'customers');
-      const q = query(customersRef, where('usernameLower', '==', cleanUsername));
-      
-      const snap = await withTimeout(
-        getDocs(q), 
-        4000, 
-        null as any,
-        'Tempo limite ao autenticar cliente. Verifique sua conexão.'
-      );
+      const res = await fetch(`/api/stores/${encodeURIComponent(storeId)}/customers/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
 
-      if (!snap || snap.empty) {
-        set({ loading: false, error: 'Usuário ou senha incorretos para esta loja.' });
-        return { success: false, error: 'Usuário não encontrado nesta loja.' };
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        const errMsg = data.error || 'Usuário ou senha incorretos.';
+        set({ loading: false, error: errMsg });
+        return { success: false, error: errMsg };
       }
 
-      const customerDoc = snap.docs[0];
-      const customerData = { id: customerDoc.id, ...customerDoc.data() } as Customer;
-
-      // Validação de senha
-      if (customerData.password && customerData.password !== password) {
-        set({ loading: false, error: 'Usuário ou senha incorretos.' });
-        return { success: false, error: 'Senha incorreta.' };
-      }
-
-      // Sessão válida
+      const customerData: Customer = data.customer;
       set({ customer: customerData, loading: false, error: null });
+
       try {
         localStorage.setItem(`fmk_customer_${storeId}`, JSON.stringify(customerData));
       } catch {}
 
       return { success: true };
     } catch (err: any) {
-      console.error("Erro no login do cliente:", err);
-      const errorMsg = err.message || 'Erro ao realizar login. Tente novamente.';
+      console.error("[CustomerAuth] Erro no login:", err);
+      const errorMsg = 'Erro de conexão ao realizar login. Tente novamente.';
       set({ loading: false, error: errorMsg });
       return { success: false, error: errorMsg };
     }
@@ -122,8 +108,8 @@ export const useCustomerAuthStore = create<CustomerAuthState>((set, get) => ({
       return { success: false, error: 'O nome de usuário deve conter no mínimo 3 caracteres.' };
     }
 
-    if (!data.password || data.password.length < 4) {
-      return { success: false, error: 'A senha deve conter no mínimo 4 caracteres.' };
+    if (!data.password || data.password.length < 6) {
+      return { success: false, error: 'A senha deve conter no mínimo 6 caracteres.' };
     }
 
     if (!data.name.trim() || !data.cpf.trim() || !data.phone.trim()) {
@@ -133,61 +119,39 @@ export const useCustomerAuthStore = create<CustomerAuthState>((set, get) => ({
     set({ loading: true, error: null });
 
     try {
-      // 1. Verifica se o nome de usuário já está em uso nesta loja
-      const isAvailable = await get().checkUsernameAvailability(storeId, cleanUsername);
-      if (!isAvailable) {
-        set({ loading: false, error: 'Este nome de usuário já está cadastrado nesta loja. Escolha outro.' });
-        return { success: false, error: 'Este nome de usuário já está cadastrado nesta loja.' };
+      const res = await fetch(`/api/stores/${encodeURIComponent(storeId)}/customers/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: cleanUsername,
+          password: data.password,
+          name: data.name.trim(),
+          cpf: data.cpf.trim(),
+          phone: data.phone.trim(),
+          email: data.email?.trim() || '',
+          address: data.address
+        })
+      });
+
+      const resData = await res.json();
+
+      if (!res.ok || !resData.success) {
+        const errMsg = resData.error || 'Falha ao realizar cadastro.';
+        set({ loading: false, error: errMsg });
+        return { success: false, error: errMsg };
       }
 
-      // 2. Cria identificador único para o cliente na loja
-      const customerId = `cust_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-      const customerRef = doc(db, 'stores', storeId, 'customers', customerId);
-
-      const newCustomer: Customer = {
-        id: customerId,
-        storeId,
-        username: data.username.trim(),
-        usernameLower: cleanUsername,
-        password: data.password,
-        name: data.name.trim(),
-        email: data.email?.trim() || '',
-        cpf: data.cpf.trim(),
-        phone: data.phone.trim(),
-        address: data.address || {
-          zipcode: '',
-          street: '',
-          number: '',
-          complement: '',
-          neighborhood: '',
-          city: '',
-          state: ''
-        },
-        totalOrders: 0,
-        totalSpent: 0,
-        createdAt: new Date().toISOString()
-      };
-
-      await withTimeout(
-        setDoc(customerRef, {
-          ...newCustomer,
-          serverCreatedAt: serverTimestamp()
-        }),
-        5000,
-        null,
-        'Tempo limite ao cadastrar cliente no Firestore.'
-      );
-
-      // 3. Salva sessão local
+      const newCustomer: Customer = resData.customer;
       set({ customer: newCustomer, loading: false, error: null });
+
       try {
         localStorage.setItem(`fmk_customer_${storeId}`, JSON.stringify(newCustomer));
       } catch {}
 
       return { success: true };
     } catch (err: any) {
-      console.error("Erro no cadastro de cliente:", err);
-      const errorMsg = err.message || 'Erro ao registrar cliente. Tente novamente.';
+      console.error("[CustomerAuth] Erro no cadastro:", err);
+      const errorMsg = 'Erro de conexão ao registrar cliente. Tente novamente.';
       set({ loading: false, error: errorMsg });
       return { success: false, error: errorMsg };
     }
