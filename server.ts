@@ -102,6 +102,21 @@ async function startServer() {
   });
 
   // Health check
+  
+  // Endpoint auxiliar para disparar emails ao atualizar status pelo painel
+  app.post('/api/orders/:storeId/:orderId/trigger-email', async (req, res) => {
+    try {
+      const { storeId, orderId } = req.params;
+      const { status } = req.body;
+      const { triggerOrderStatusEmail } = await import('./server-email-triggers.js');
+      await triggerOrderStatusEmail(storeId, orderId, status);
+      res.json({ success: true });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: 'Erro ao disparar email' });
+    }
+  });
+
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok' });
   });

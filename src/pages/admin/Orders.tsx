@@ -152,6 +152,16 @@ export function Orders() {
       await updateDoc(doc(db, 'stores', activeStore.id, 'orders', orderId), {
         status: newStatus
       });
+      // Try to trigger email
+      try {
+        await fetch(`/api/orders/${activeStore.id}/${orderId}/trigger-email`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus })
+        });
+      } catch (e) {
+        console.error('Email trigger failed', e);
+      }
       if (selectedOrder && selectedOrder.id === orderId) {
         setSelectedOrder((prev: any) => ({ ...prev, status: newStatus }));
       }
