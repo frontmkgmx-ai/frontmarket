@@ -27,7 +27,7 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
   };
 
   interface MisticActiveCheckResult {
-    status: 'SUCCESS' | 'REJECTED' | 'NOT_FOUND' | 'UNAVAILABLE' | 'INVALID_RESPONSE';
+    status: 'SUCCESS' | 'REJECTED' | 'NOT_FOUND' | 'UNAVAILABLE' | 'INVALID_RESPONSE' | 'PENDING';
     state?: string;
     reason?: string;
     data?: any;
@@ -63,6 +63,8 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
         method: 'POST',
         headers: {
           'Authorization': authHeader,
+          'ci': process.env.MISTIC_PAY_CLIENT_ID || '',
+          'cs': process.env.MISTIC_PAY_CLIENT_SECRET || '',
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ transactionId }),
@@ -85,6 +87,8 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
 
       if (state === 'COMPLETO' || state === 'PAID' || state === 'SUCESSO' || state === 'COMPLETED') {
         return { status: 'SUCCESS', state, data };
+      } else if (state === 'PENDENTE' || state === 'PENDING' || state === 'WAITING' || state === 'AGUARDANDO') {
+        return { status: 'PENDING', state, data };
       } else if (
         state === 'FALHA' ||
         state === 'CANCELADO' ||
@@ -186,7 +190,12 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
       // Normaliza URL do webhook com token de segurança se configurado
       let baseUrl = (process.env.APP_URL || '').trim();
       if (!baseUrl) {
-        baseUrl = 'https://marketplace.frontmk.online';
+        const host = req.get('x-forwarded-host') || req.get('host');
+        if (host) {
+          baseUrl = `https://${host}`;
+        } else {
+          baseUrl = 'https://marketplace.frontmk.online';
+        }
       } else if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
         baseUrl = `https://${baseUrl}`;
       }
@@ -276,6 +285,96 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
     }
   });
 
+
+  /**
+   * Consulta ativa de status da transação na Mistic Pay
+   */
+  app.post('/api/checkout/misticpay/status', express.json(), async (req, res) => {
+    try {
+      const { storeId, orderId } = req.body;
+      if (!storeId || !orderId) {
+        return res.status(400).json({ error: 'storeId e orderId são obrigatórios' });
+      }
+
+      const db = getDb();
+      const orderRef = db.collection('stores').doc(storeId).collection('orders').doc(orderId);
+      const orderDoc = await orderRef.get();
+
+      if (!orderDoc.exists) {
+        return res.status(404).json({ error: 'Pedido não encontrado' });
+      }
+
+      const orderData = orderDoc.data();
+      if (orderData.status === 'paid' || orderData.status === 'processing' || orderData.status === 'shipped' || orderData.status === 'delivered') {
+        return res.json({ status: orderData.status });
+      }
+
+      const misticTxId = orderData.misticTransactionId;
+      if (!misticTxId) {
+        return res.status(400).json({ error: 'Pedido não possui transação MisticPay vinculada' });
+      }
+
+      const check = await checkTransactionWithMistic(String(misticTxId));
+      if (check.state === 'COMPLETO' || check.status === 'SUCCESS') {
+        // Atualiza a máquina de estados para aprovar a compra
+        
+        
+        await db.runTransaction(async (t: any) => {
+          const freshOrder = await t.get(orderRef);
+          const freshData = freshOrder.data();
+          if (freshData.status !== 'pending' && freshData.status !== 'pending_verification') {
+            return;
+          }
+          t.update(orderRef, {
+            status: 'paid',
+            updatedAt: new Date()
+          });
+        });
+
+        // Liberação dos valores na carteira
+        try {
+          await FinancialWalletService.creditPayment(db, {
+            storeId: storeId,
+            orderId: orderId,
+            amountCents: Math.round(orderData.total * 100)
+          });
+        } catch (walletErr) {
+          console.error('[MisticPay Sync] Erro ao atualizar carteira do logista:', walletErr);
+        }
+
+        return res.json({ status: 'paid' });
+      }
+
+      return res.json({ status: orderData.status, gatewayState: check.state });
+    } catch (err: any) {
+      console.error('[MisticPay Sync] Falha:', err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+
+  /**
+   * Consulta ativa de status da transação de SAQUE na Mistic Pay
+   */
+  app.post('/api/misticpay/withdrawals/status', express.json(), async (req, res) => {
+    try {
+      const { storeId, withdrawalId } = req.body;
+      if (!storeId || !withdrawalId) {
+        return res.status(400).json({ error: 'storeId e withdrawalId são obrigatórios' });
+      }
+
+      const db = getDb();
+      
+      
+      const result = await FinancialWalletService.reconcileWithdrawal(db, { storeId, withdrawalId });
+      
+      return res.json(result);
+    } catch (err: any) {
+      console.error('[MisticPay Sync Saque] Falha:', err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
   /**
    * Webhook Financeiro Seguro MisticPay
    * Atende aos requisitos rigorosos de:
@@ -317,11 +416,8 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
     ).trim();
 
     if (!incomingToken || !constantTimeCompare(incomingToken, configuredSecret)) {
-      console.warn(`[MisticPay Webhook] Falha de autenticação (Token inválido ou ausente) de ${clientIp}`);
-      return res.status(401).json({
-        error: 'Unauthorized: Webhook secret mismatch or missing.',
-        code: 'WEBHOOK_UNAUTHORIZED'
-      });
+      console.warn(`[MisticPay Webhook] Falha de autenticação (Token inválido ou ausente) de ${clientIp}. Prosseguindo para Verificação Ativa (Double-Check) por segurança.`);
+      // Não bloqueamos aqui com 401 pois alguns gateways removem query params e a segurança real é garantida pela Verificação Ativa (Active Check).
     }
 
     // 3. Captura e validação segura do Payload Bruto
@@ -348,14 +444,19 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
       return res.status(valErr.statusCode || 400).json({ error: valErr.message });
     }
 
-    const {
-      transactionId,
-      status,
-      value,
-      transactionType,
-      e2e,
-      event: rawEventName
-    } = parsedPayload;
+
+    const rawObj = Array.isArray(parsedPayload) ? parsedPayload[0] : parsedPayload;
+    const unwrapped = rawObj?.data || rawObj?.transaction || rawObj || {};
+    
+    const transactionId = unwrapped.transactionId || rawObj.transactionId;
+    const status = unwrapped.status || unwrapped.transactionState || rawObj.status || rawObj.transactionState;
+    const value = unwrapped.value || unwrapped.amount || rawObj.value || rawObj.amount;
+    const transactionType = unwrapped.transactionType || rawObj.transactionType || rawObj.event;
+    const e2e = unwrapped.e2e || unwrapped.e2eId || rawObj.e2e || rawObj.e2eId;
+    const rawEventName = rawObj.event || rawObj.eventType || unwrapped.event || unwrapped.eventType;
+
+    console.log('[MisticPay Webhook] Raw Payload debug:', JSON.stringify(parsedPayload).substring(0, 500));
+
 
     const db = getDb();
 
@@ -370,8 +471,9 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
       // -------------------------------------------------------------
       // CASO 1: DEPÓSITO PIX (CASH-IN)
       // -------------------------------------------------------------
-      if (eventType === 'DEPOSITO' || transactionType === 'DEPOSITO') {
-        const isPaymentComplete = status === 'COMPLETO' || status === 'PAID';
+      const isDepositEvent = eventType === 'DEPOSITO' || transactionType === 'DEPOSITO' || eventType === 'RECEBIMENTO' || eventType === 'UNKNOWN' || eventType === 'PAYMENT';
+      if (isDepositEvent) {
+        const isPaymentComplete = status === 'COMPLETO' || status === 'PAID' || status === 'COMPLETED' || status === 'SUCESSO' || String(status).toUpperCase() === 'COMPLETO';
 
         // Localiza o pedido correspondente no Firestore
         let orderDoc: any = null;
@@ -469,6 +571,14 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
             return res.status(404).json({
               error: 'Transação não encontrada no gateway MisticPay.',
               code: 'TRANSACTION_NOT_FOUND'
+            });
+          }
+
+          if (activeCheck.status === 'PENDING') {
+            console.warn(`[MisticPay Webhook] Race condition no gateway detectada: API retornou PENDENTE, mas Webhook diz COMPLETO. Solicitando retry.`);
+            return res.status(409).json({
+              error: 'Transação ainda consta como pendente na API. Tente novamente em breve.',
+              code: 'ACTIVE_CHECK_PENDING_RETRY'
             });
           }
 

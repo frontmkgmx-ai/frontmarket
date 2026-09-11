@@ -25,6 +25,7 @@ import { FastCache } from '../../lib/cache';
 
 const statusConfig: Record<OrderStatus, { label: string; color: string; icon: React.ComponentType<{ className?: string }> }> = {
   pending: { label: 'Pendente', color: 'bg-amber-100 text-amber-800 border-amber-200', icon: Clock },
+  pending_verification: { label: 'Verificando Pgto', color: 'bg-orange-100 text-orange-800 border-orange-200', icon: Clock },
   paid: { label: 'Pago', color: 'bg-emerald-100 text-emerald-800 border-emerald-200', icon: Banknote },
   processing: { label: 'Em Preparo', color: 'bg-blue-100 text-blue-800 border-blue-200', icon: Package },
   shipped: { label: 'Enviado', color: 'bg-indigo-100 text-indigo-800 border-indigo-200', icon: Truck },
@@ -83,6 +84,38 @@ export function Orders() {
       unsubscribe();
     };
   }, [activeStore?.id, cacheKey]);
+
+
+  const handleMisticSync = async (orderId: string) => {
+    if (!store) return;
+    try {
+      setUpdatingStatus(true);
+      const res = await fetch('/api/checkout/misticpay/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeId: store.id, orderId })
+      });
+      const data = await res.json();
+      
+      if (res.ok) {
+        if (data.status === 'paid') {
+          alert('Pagamento aprovado na Mistic Pay!');
+          setOrders(orders.map(o => o.id === orderId ? { ...o, status: 'paid' } : o));
+          if (selectedOrder?.id === orderId) {
+            setSelectedOrder({ ...selectedOrder, status: 'paid' });
+          }
+        } else {
+          alert('Status na Mistic Pay: ' + (data.gatewayState || data.status));
+        }
+      } else {
+        alert(data.error || 'Erro ao sincronizar.');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Erro ao sincronizar.');
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
 
   const handleUpdateStatus = async (orderId: string, newStatus: OrderStatus) => {
     if (!activeStore) return;
@@ -339,7 +372,21 @@ export function Orders() {
                       </button>
                     );
                   })}
+
                 </div>
+                
+                {selectedOrder.status !== 'paid' && selectedOrder.status !== 'cancelled' && (
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      disabled={updatingStatus}
+                      onClick={() => handleMisticSync(selectedOrder.id)}
+                      className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 flex items-center gap-2"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${updatingStatus ? 'animate-spin' : ''}`} />
+                      Sincronizar Pagamento Mistic Pay
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Dados do Cliente */}

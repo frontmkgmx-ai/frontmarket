@@ -130,7 +130,8 @@ export function setupWalletRoutes(app: express.Express, authMiddleware: any, get
           pixKeyType,
           idempotencyKey: cleanIdempotencyKey,
           gateway: 'misticpay',
-          requestId
+          requestId,
+          requestHost: req.get('x-forwarded-host') || req.get('host')
         },
         db
       );

@@ -64,7 +64,7 @@ export interface WithdrawalParams {
   pixKeyType: string;
   idempotencyKey: string;
   gateway?: string;
-  requestId?: string;
+  requestId?: string; requestHost?: string;
 }
 
 export interface WithdrawalResult {
@@ -73,7 +73,7 @@ export interface WithdrawalResult {
   message: string;
   withdrawalId?: string;
   misticTransactionId?: string | number;
-  requestId?: string;
+  requestId?: string; requestHost?: string;
   details?: any;
 }
 
@@ -309,7 +309,7 @@ export class FinancialWalletService {
       feeCents?: number;
       paymentMethod?: string;
       idempotencyKey?: string;
-      requestId?: string;
+      requestId?: string; requestHost?: string;
       confirmedAtMillis?: number;
     }
   ): Promise<{ success: boolean; netAmountCents: number; alreadyProcessed?: boolean; releaseAt?: string }> {
@@ -1126,7 +1126,9 @@ export class FinancialWalletService {
           requestId
         };
       }
-      const baseAppUrl = (process.env.APP_URL || 'https://marketplace.frontmk.online').replace(/\/+$/, '');
+      // The host is injected into APP_URL during runtime in server-wallet if not set, or we default it
+      const host = params.requestHost || process.env.APP_URL || 'marketplace.frontmk.online';
+      const baseAppUrl = host.startsWith('http') ? host.replace(/\/+$/, '') : `https://${host.replace(/\/+$/, '')}`;
       const webhookUrl = `${baseAppUrl}/api/webhook/misticpay?token=${encodeURIComponent(webhookSecret)}`;
 
       // Timeout explícito com AbortController (15s)

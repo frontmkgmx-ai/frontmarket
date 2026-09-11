@@ -40,6 +40,37 @@ export function Wallet() {
   const [pixKey, setPixKey] = useState('');
   const [pixType, setPixType] = useState('CPF');
   const [isWithdrawing, setIsWithdrawing] = useState(false);
+
+  const [syncingWithdrawal, setSyncingWithdrawal] = useState<string | null>(null);
+
+  const handleSyncWithdrawal = async (withdrawalId: string) => {
+    if (!storeId) return;
+    try {
+      setSyncingWithdrawal(withdrawalId);
+      const res = await fetch('/api/misticpay/withdrawals/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeId, withdrawalId })
+      });
+      const data = await res.json();
+      
+      if (res.ok) {
+        if (data.reconciled) {
+          alert('Status atualizado: ' + data.status);
+          fetchWalletData(); // Refresh UI
+        } else {
+          alert('Status na Mistic Pay continua: ' + data.status + ' (' + data.reason + ')');
+        }
+      } else {
+        alert(data.error || 'Erro ao sincronizar saque.');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Erro ao sincronizar saque.');
+    } finally {
+      setSyncingWithdrawal(null);
+    }
+  };
+
   const [successMsg, setSuccessMsg] = useState('');
   const [withdrawIdempotencyKey, setWithdrawIdempotencyKey] = useState('');
   
@@ -369,6 +400,7 @@ export function Wallet() {
                   <th className="px-6 py-3 whitespace-nowrap">Método</th>
                   <th className="px-6 py-3 whitespace-nowrap">Valor Líquido</th>
                   <th className="px-6 py-3 whitespace-nowrap">Status</th>
+                  <th className="px-6 py-3 whitespace-nowrap text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">

@@ -146,9 +146,14 @@ export function parseAndValidateWebhookPayload(
       return value;
     });
   } catch (jsonErr: any) {
-    const err: any = new Error(jsonErr.message || 'Formato JSON inválido no corpo do webhook.');
-    err.statusCode = jsonErr.statusCode || 400;
-    throw err;
+    if (rawStr.includes('=') && !rawStr.startsWith('{') && !rawStr.startsWith('[')) {
+      const qs = require('querystring');
+      parsed = qs.parse(rawStr);
+    } else {
+      const err: any = new Error(jsonErr.message || 'Formato JSON inválido no corpo do webhook.');
+      err.statusCode = jsonErr.statusCode || 400;
+      throw err;
+    }
   }
 
   return { payload: parsed, payloadHash };
