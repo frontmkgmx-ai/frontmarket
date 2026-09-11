@@ -101,7 +101,7 @@ export interface OrderItem {
   isDigital?: boolean;
 }
 
-export type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded';
+export type OrderStatus = 'pending' | 'paid' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded';
 
 export interface CustomerAddress {
   zipcode: string;

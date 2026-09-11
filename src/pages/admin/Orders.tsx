@@ -18,12 +18,14 @@ import {
   Phone,
   Mail,
   MapPin,
+  Banknote,
   FileText
 } from 'lucide-react';
 import { FastCache } from '../../lib/cache';
 
 const statusConfig: Record<OrderStatus, { label: string; color: string; icon: React.ComponentType<{ className?: string }> }> = {
   pending: { label: 'Pendente', color: 'bg-amber-100 text-amber-800 border-amber-200', icon: Clock },
+  paid: { label: 'Pago', color: 'bg-emerald-100 text-emerald-800 border-emerald-200', icon: Banknote },
   processing: { label: 'Em Preparo', color: 'bg-blue-100 text-blue-800 border-blue-200', icon: Package },
   shipped: { label: 'Enviado', color: 'bg-indigo-100 text-indigo-800 border-indigo-200', icon: Truck },
   delivered: { label: 'Entregue', color: 'bg-emerald-100 text-emerald-800 border-emerald-200', icon: CheckCircle2 },
@@ -104,8 +106,8 @@ export function Orders() {
   const filteredOrders = orders.filter(order => {
     const matchesSearch = 
       order.id.toLowerCase().includes(search.toLowerCase()) ||
-      order.customer?.name?.toLowerCase().includes(search.toLowerCase()) ||
-      order.customer?.email?.toLowerCase().includes(search.toLowerCase());
+      ((order.customer?.name || (order as any).customerName) || '').toLowerCase().includes(search.toLowerCase()) ||
+      ((order.customer?.email || (order as any).customerEmail) || '').toLowerCase().includes(search.toLowerCase());
     
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
     return matchesSearch && matchesStatus;
@@ -209,8 +211,8 @@ export function Orders() {
                         #{order.id.slice(-6).toUpperCase()}
                       </td>
                       <td className="py-3.5 px-5">
-                        <div className="font-semibold text-slate-900">{order.customer?.name || 'Cliente'}</div>
-                        <div className="text-xs text-slate-400">{order.customer?.email}</div>
+                        <div className="font-semibold text-slate-900">{order.customer?.name || (order as any).customerName || 'Cliente'}</div>
+                        <div className="text-xs text-slate-400">{order.customer?.email || (order as any).customerEmail}</div>
                       </td>
                       <td className="py-3.5 px-5 text-slate-600 text-xs">
                         {order.items?.length || 0} {order.items?.length === 1 ? 'item' : 'itens'}
@@ -258,8 +260,8 @@ export function Orders() {
                   </div>
 
                   <div>
-                    <div className="text-xs sm:text-sm font-semibold text-slate-900">{order.customer?.name || 'Cliente'}</div>
-                    <div className="text-[11px] text-slate-500">{order.customer?.email}</div>
+                    <div className="text-xs sm:text-sm font-semibold text-slate-900">{order.customer?.name || (order as any).customerName || 'Cliente'}</div>
+                    <div className="text-[11px] text-slate-500">{order.customer?.email || (order as any).customerEmail}</div>
                   </div>
 
                   <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-xs">
@@ -314,20 +316,31 @@ export function Orders() {
                   Atualizar Status do Pedido:
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {(Object.keys(statusConfig) as OrderStatus[]).map((st) => (
-                    <button
-                      key={st}
-                      disabled={updatingStatus || selectedOrder.status === st}
-                      onClick={() => handleUpdateStatus(selectedOrder.id, st)}
-                      className={`px-3 py-2 text-xs font-semibold rounded-lg border text-left transition-all cursor-pointer ${
-                        selectedOrder.status === st
-                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs ring-2 ring-indigo-200'
-                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      {statusConfig[st].label}
-                    </button>
-                  ))}
+                  {(Object.keys(statusConfig) as OrderStatus[]).map((st) => {
+                    const isDisabled = 
+                      updatingStatus || 
+                      selectedOrder.status === st || 
+                      st === 'paid' || 
+                      (selectedOrder.status === 'pending' && st !== 'cancelled') || 
+                      (st === 'refunded' && (selectedOrder.status === 'pending' || selectedOrder.status === 'cancelled'));
+
+                    return (
+                      <button
+                        key={st}
+                        disabled={isDisabled}
+                        onClick={() => handleUpdateStatus(selectedOrder.id, st)}
+                        className={`px-3 py-2 text-xs font-semibold rounded-lg border text-left transition-all ${
+                          selectedOrder.status === st
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs ring-2 ring-indigo-200'
+                            : isDisabled
+                            ? 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed opacity-60'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 cursor-pointer'
+                        }`}
+                      >
+                        {statusConfig[st].label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -337,27 +350,27 @@ export function Orders() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs sm:text-sm">
                   <div className="bg-white p-3 rounded-xl border border-slate-200">
                     <span className="text-[10px] text-slate-400 block uppercase font-semibold">Nome</span>
-                    <strong className="text-slate-800">{selectedOrder.customer?.name || 'Não informado'}</strong>
+                    <strong className="text-slate-800">{selectedOrder.customer?.name || (selectedOrder as any).customerName || 'Não informado'}</strong>
                   </div>
                   <div className="bg-white p-3 rounded-xl border border-slate-200">
                     <span className="text-[10px] text-slate-400 block uppercase font-semibold">E-mail</span>
                     <div className="flex items-center gap-1 text-slate-800 truncate">
                       <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      {selectedOrder.customer?.email || 'Não informado'}
+                      {selectedOrder.customer?.email || (selectedOrder as any).customerEmail || 'Não informado'}
                     </div>
                   </div>
                   <div className="bg-white p-3 rounded-xl border border-slate-200">
                     <span className="text-[10px] text-slate-400 block uppercase font-semibold">Telefone</span>
                     <div className="flex items-center gap-1 text-slate-800">
                       <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      {selectedOrder.customer?.phone || 'Não informado'}
+                      {selectedOrder.customer?.phone || (selectedOrder as any).customerPhone || 'Não informado'}
                     </div>
                   </div>
                   <div className="bg-white p-3 rounded-xl border border-slate-200">
                     <span className="text-[10px] text-slate-400 block uppercase font-semibold">CPF / Documento</span>
                     <div className="flex items-center gap-1 text-slate-800">
                       <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      {selectedOrder.customer?.document || 'Não informado'}
+                      {selectedOrder.customer?.document || (selectedOrder as any).customerDocument || 'Não informado'}
                     </div>
                   </div>
                 </div>
