@@ -12,10 +12,15 @@ export interface StreamxImageProps extends React.ImgHTMLAttributes<HTMLImageElem
 export function StreamxImage({ src, alt, className, ...props }: StreamxImageProps) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [error, setError] = useState(false);
+  const [isVideo, setIsVideo] = useState(false);
 
   useEffect(() => {
     let active = true;
     if (!src) return;
+
+    if (src.match(/\.(mp4|webm|ogg)$/i)) {
+      setIsVideo(true);
+    }
 
     const url = resolveStreamxImageUrl(src);
     
@@ -29,6 +34,7 @@ export function StreamxImage({ src, alt, className, ...props }: StreamxImageProp
           if (contentType && contentType.includes('text/html')) {
              throw new Error('Received HTML instead of image (backend might be missing)');
           }
+          if (contentType && contentType.startsWith('video/')) { if (active) setIsVideo(true); }
           const blob = await res.blob();
           if (active) setBlobUrl(URL.createObjectURL(blob));
         })
@@ -48,13 +54,27 @@ export function StreamxImage({ src, alt, className, ...props }: StreamxImageProp
   if (error) {
     return (
       <div className={`flex items-center justify-center bg-slate-100 text-slate-400 text-xs ${className}`}>
-        Sem imagem
+        Sem mídia
       </div>
     );
   }
 
   if (!blobUrl) {
     return <div className={`bg-slate-100 animate-pulse ${className}`}></div>;
+  }
+
+  if (isVideo) {
+    return (
+      <video 
+        src={blobUrl} 
+        className={className} 
+        autoPlay 
+        muted 
+        loop 
+        playsInline
+        {...(props as any)} 
+      />
+    );
   }
 
   return <img src={blobUrl} alt={alt} className={className} {...props} />;

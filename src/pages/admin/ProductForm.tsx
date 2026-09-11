@@ -32,7 +32,7 @@ export function ProductForm() {
   const [categoryId, setCategoryId] = useState('');
   const [stock, setStock] = useState('0');
   const [active, setActive] = useState(true);
-  const [isDigital, setIsDigital] = useState(false);
+  const [isDigital, setIsDigital] = useState(true);
   const [images, setImages] = useState<string[]>([]);
   const [videoUrl, setVideoUrl] = useState('');
   const [newImageUrl, setNewImageUrl] = useState('');
@@ -110,7 +110,7 @@ export function ProductForm() {
         categoryId: categoryId || 'todos',
         stock: parseInt(stock, 10) || 0,
         active,
-        isDigital,
+        isDigital: true,
         images,
         videoUrl,
         weight: parseFloat(weight) || 0,
@@ -229,8 +229,8 @@ export function ProductForm() {
             </div>
             
             <div className="pt-4 border-t border-gray-100">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Imagens do Produto</label>
-              <p className="text-xs text-gray-500 mb-3">Dica: As imagens são exibidas em formato 16:9 (paisagem) em todo o site. Faça o upload de imagens neste formato para evitar cortes.</p>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Mídias do Produto (Imagens ou Vídeos)</label>
+              <p className="text-xs text-gray-500 mb-3">Dica: As mídias (imagens ou vídeos) são exibidas em formato 16:9 (paisagem) em todo o site. Faça o upload de mídias neste formato para evitar cortes.</p>
               <div className="flex gap-2 mb-4">
                 <input
                   type="url"
@@ -278,7 +278,7 @@ export function ProductForm() {
                   <span className="text-xs text-gray-500 mt-1 text-center leading-tight px-1">Upload de<br/>Dispositivo</span>
                 </>
               )}
-              <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} disabled={uploadingImage} />
+              <input type="file" className="hidden" accept="image/*,video/*" onChange={handleImageUpload} disabled={uploadingImage} />
             </label>
           </div>
         </div>
@@ -309,7 +309,7 @@ export function ProductForm() {
             )}
           </div>
 
-          <div className="flex items-center justify-between py-3 border-t border-gray-100 mt-4">
+          <div className="hidden items-center justify-between py-3 border-t border-gray-100 mt-4">
             <div>
               <p className="text-sm font-medium text-gray-900">Produto Digital</p>
               <p className="text-sm text-gray-500">Este produto não requer frete físico</p>
