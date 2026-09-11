@@ -12,7 +12,8 @@ import {
   CheckCircle2,
   Clock,
   Loader2,
-  ShieldCheck
+  ShieldCheck,
+  AlertCircle
 } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
 
@@ -30,6 +31,7 @@ export function Wallet() {
   const [wallet, setWallet] = useState<WalletData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [modalError, setModalError] = useState('');
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [pixKey, setPixKey] = useState('');
@@ -37,15 +39,15 @@ export function Wallet() {
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   
-    const [withdrawals, setWithdrawals] = useState<any[]>([]);
+  const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
 
-    const handleWithdraw = async (e: React.FormEvent) => {
+  const handleWithdraw = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeStore?.id) return;
     
     setIsWithdrawing(true);
-    setError('');
+    setModalError('');
     setSuccessMsg('');
     
     try {
@@ -58,7 +60,7 @@ export function Wallet() {
         },
         body: JSON.stringify({
           amount: parseFloat(withdrawAmount),
-          pixKey,
+          pixKey: pixKey.trim(),
           pixKeyType: pixType,
           idempotencyKey: crypto.randomUUID()
         })
@@ -66,7 +68,7 @@ export function Wallet() {
 
       const data = await res.json();
       
-      if (!res.ok) {
+      if (!res.ok || !data.success) {
         throw new Error(data.message || data.error || 'Erro ao processar saque.');
       }
       
@@ -74,28 +76,16 @@ export function Wallet() {
       setShowWithdrawModal(false);
       setWithdrawAmount('');
       setPixKey('');
+      setModalError('');
       
       // trigger refresh
       setRefreshKey(prev => prev + 1);
-      setTimeout(() => setSuccessMsg(''), 5000);
+      setTimeout(() => setSuccessMsg(''), 6000);
       
     } catch (err: any) {
-      setError(err.message);
+      setModalError(err.message || 'Falha ao solicitar saque. Verifique as informações e tente novamente.');
     } finally {
       setIsWithdrawing(false);
-    }
-  };
-
-
-  const handleCancelWithdrawal = async (id: string) => {
-    if (!activeStore?.id) return;
-    try {
-      await deleteDoc(doc(db, 'stores', activeStore.id, 'withdrawals', id));
-      setRefreshKey(prev => prev + 1);
-      setSuccessMsg('Saque cancelado com sucesso!');
-      setTimeout(() => setSuccessMsg(''), 3000);
-    } catch (e: any) {
-      setError(e.message || 'Erro ao cancelar saque.');
     }
   };
 
@@ -114,22 +104,6 @@ export function Wallet() {
         let totalApprovedCount = 0;
         let availableBalanceAcc = 0;
         let blockedBalanceAcc = 0;
-        
-        // Auto-clean any pending withdrawals on page load
-        const withSnap = await getDocs(collection(db, 'stores', storeId, 'withdrawals'));
-        for (const w of withSnap.docs) {
-          if (w.data().status === 'pending') {
-            const createdAt = w.data().createdAt?.toDate?.()?.getTime() || 0;
-            // Only auto-delete pending withdrawals created before September 11, 2026 (fix for invalid old state)
-            if (createdAt < new Date('2026-09-11T00:00:00Z').getTime()) {
-              try {
-                await deleteDoc(doc(db, 'stores', storeId, 'withdrawals', w.id));
-                console.log("Auto-cleaned invalid old pending withdrawal", w.id);
-              } catch (e) {}
-            }
-          }
-        }
-        
 
         const now = new Date().getTime();
         const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
@@ -173,7 +147,7 @@ export function Wallet() {
            const withSnap = await getDocs(collection(db, 'stores', storeId, 'withdrawals'));
            withSnap.forEach(doc => {
              const w = doc.data();
-             // Skip failed/rejected from history visualization
+             // Filtrar saques que falharam ou foram rejeitados do histórico e do cálculo de saldo
              if (w.status !== 'failed' && w.status !== 'rejected') {
                withdrawalsList.push({ id: doc.id, ...w });
              }
@@ -183,7 +157,7 @@ export function Wallet() {
              }
            });
         } catch (e) {
-           console.warn("Could not load withdrawals, maybe rules missing:", e);
+           console.warn("Could not load withdrawals:", e);
         }
 
         // Sort withdrawals by date DESC
@@ -231,9 +205,10 @@ export function Wallet() {
           <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl">
             <h3 className="text-xl font-bold text-slate-900 mb-4">Solicitar Saque</h3>
             <p className="text-sm text-slate-500 mb-6">O valor será transferido imediatamente via PIX pela Mistic Pay.</p>
-            {error && (
-              <div className="mb-4 p-3 bg-red-50 text-red-700 text-sm rounded-lg border border-red-200 break-words">
-                {error}
+            {modalError && (
+              <div className="mb-4 p-3.5 bg-red-50 text-red-700 text-sm rounded-xl border border-red-200 flex items-start gap-2.5">
+                <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                <div className="leading-relaxed font-medium">{modalError}</div>
               </div>
             )}
             
@@ -507,19 +482,14 @@ export function Wallet() {
                           Concluído
                         </span>
                       )}
-                      {w.status === 'pending' && (
-                        <div className="flex items-center gap-2">
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
-                            <Clock className="w-3 h-3" />
-                            Pendente
-                          </span>
-                          <button onClick={() => handleCancelWithdrawal(w.id)} className="text-xs text-rose-500 hover:text-rose-700 font-medium underline">
-                            Cancelar
-                          </button>
-                        </div>
+                      {(w.status === 'processing' || w.status === 'pending') && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                          <Clock className="w-3 h-3 animate-spin text-blue-500" />
+                          Processando
+                        </span>
                       )}
-                      {w.status === 'rejected' && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-rose-50 text-rose-700 border border-rose-200">
+                      {(w.status === 'rejected' || w.status === 'cancelled') && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
                           Cancelado
                         </span>
                       )}

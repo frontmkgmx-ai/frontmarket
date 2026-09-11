@@ -22,7 +22,6 @@ import { Settings } from './pages/admin/Settings';
 import { Verification } from './pages/admin/Verification';
 import { Personalization } from './pages/admin/Personalization';
 import { Domains } from './pages/admin/Domains';
-import { PaymentGateways } from './pages/admin/PaymentGateways';
 import { Wallet } from './pages/admin/Wallet';
 import { HomeStore } from './pages/storefront/HomeStore';
 import { ProductDetail } from './pages/storefront/ProductDetail';
@@ -66,7 +65,7 @@ export default function App() {
                 <Route path="categories" element={<Categories />} />
                 <Route path="orders" element={<Orders />} />
                 <Route path="customers" element={<Customers />} />
-                <Route path="gateways" element={<PaymentGateways />} />
+                <Route path="gateways" element={<Navigate to="/admin/wallet" replace />} />
                 <Route path="wallet" element={<Wallet />} />
                 <Route path="domains" element={<Domains />} />
                 <Route path="payments" element={<Payments />} />

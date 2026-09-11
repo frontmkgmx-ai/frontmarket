@@ -20,7 +20,7 @@ export function Dashboard() {
     };
   });
 
-  const [misticBalance, setInvictusBalance] = useState<{ available: number; blocked?: number } | null>(null);
+  const [misticBalance, setMisticBalance] = useState<{ available: number; blocked?: number } | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
 
   const [loading, setLoading] = useState<boolean>(() => {
@@ -43,7 +43,7 @@ export function Dashboard() {
         });
         if (res.ok) {
            const data = await res.json();
-           setInvictusBalance(data.balance);
+           setMisticBalance(data.balance);
         }
       } catch (err) {
         // Ignora caso gateway não configurado

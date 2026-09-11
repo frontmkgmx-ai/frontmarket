@@ -44,11 +44,9 @@ export function DashboardLayout() {
     { name: 'Produtos', icon: Package, path: '/admin/products' },
     { name: 'Categorias', icon: Layers, path: '/admin/categories' },
     { name: 'Clientes', icon: Users, path: '/admin/customers' },
-    { name: 'Gateways', icon: CreditCard, path: '/admin/gateways' },
     { name: 'Domínios', icon: ExternalLink, path: '/admin/domains' },
     { name: 'Verificação', icon: ShieldCheck, path: '/admin/verification' },
-    { name: 'Personalização', icon: Palette,
-  Wallet, path: '/admin/personalization' },
+    { name: 'Personalização', icon: Palette, path: '/admin/personalization' },
     { name: 'Configurações', icon: Settings, path: '/admin/settings' },
   ];
 

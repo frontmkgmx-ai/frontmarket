@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { resolveStreamxImageUrl } from '../lib/streamx';
 
-interface StreamxImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {
+export interface StreamxImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {
   src: string;
+  alt?: string;
+  className?: string;
+  loading?: 'eager' | 'lazy' | any;
+  [key: string]: any;
 }
 
 export function StreamxImage({ src, alt, className, ...props }: StreamxImageProps) {

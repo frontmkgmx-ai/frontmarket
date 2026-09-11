@@ -6,11 +6,6 @@ import { createServer as createViteServer } from 'vite';
 import { initializeApp, App, cert } from 'firebase-admin/app';
 import { getAuth as getFirebaseAuth } from 'firebase-admin/auth';
 import { getFirestore as getFirebaseFirestore, FieldValue } from 'firebase-admin/firestore';
-import { setupInvictusPayRoutes } from './server-invictuspay.js';
-import { setupMercadoPagoRoutes } from './server-mercadopago.js';
-import { setupStripeRoutes } from './server-stripe.js';
-import { setupPagBankRoutes } from './server-pagbank.js';
-import { setupInfinitePayRoutes } from './server-infinitepay.js';
 import { setupStreamxRoutes } from './server-streamx.js';
 import { setupMisticPayRoutes } from './server-misticpay.js';
 import { setupWalletRoutes } from "./server-wallet.js";
@@ -89,12 +84,25 @@ async function startServer() {
     res.json({ status: 'ok' });
   });
 
-  // Setup InvictusPay Routes
-  setupInvictusPayRoutes(app, authMiddleware, getFirestore);
-  setupMercadoPagoRoutes(app, authMiddleware, getFirestore);
-  setupStripeRoutes(app, authMiddleware, getFirestore);
-  setupPagBankRoutes(app, authMiddleware, getFirestore);
-  setupInfinitePayRoutes(app, authMiddleware, getFirestore);
+  // Normalizador robusto da URL base da aplicação para garantir esquemas obrigatórios (https://)
+  function getAppBaseUrl(req?: express.Request): string {
+    let rawUrl = (process.env.APP_URL || '').trim();
+    if (!rawUrl && req) {
+      const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'https') as string;
+      const host = (req.headers['x-forwarded-host'] || req.headers.host || 'marketplace.frontmk.online') as string;
+      rawUrl = `${proto}://${host}`;
+    }
+    if (!rawUrl) {
+      rawUrl = 'https://marketplace.frontmk.online';
+    }
+    // Garante obrigatoriamente que a URL tenha esquema https:// ou http://
+    if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://')) {
+      rawUrl = `https://${rawUrl}`;
+    }
+    return rawUrl.replace(/\/+$/, '');
+  }
+
+  // Gateway Financeiro Unificado: MisticPay & Carteira
   setupStreamxRoutes(app, authMiddleware);
   setupMisticPayRoutes(app, authMiddleware, getFirestore);
   setupWalletRoutes(app, authMiddleware, getFirestore);
@@ -110,6 +118,9 @@ async function startServer() {
     }
 
     try {
+      // Callback obrigatório com scheme completo (ex: https://dominio.com/admin/verification/result)
+      const callbackUrl = `${getAppBaseUrl(req)}/admin/verification/result`;
+
       // Criar sessão Didit (V3 API)
       const response = await fetch('https://verification.didit.me/v3/session/', {
         method: 'POST',
@@ -118,9 +129,9 @@ async function startServer() {
           'x-api-key': process.env.DIDIT_API_KEY
         },
         body: JSON.stringify({
-          workflow_id: process.env.DIDIT_WORKFLOW_ID || '6b43db1f-9cb7-48f1-a0a7-1941464fb1ca',
+          workflow_id: req.body?.workflowId || process.env.DIDIT_WORKFLOW_ID || '6b43db1f-9cb7-48f1-a0a7-1941464fb1ca',
           vendor_data: user.uid,
-          callback: `${process.env.APP_URL || 'https://marketplace.frontmk.online'}/admin/verification/result`
+          callback: callbackUrl
         })
       });
       

@@ -28,6 +28,15 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
       const orderRef = db.collection('stores').doc(storeId).collection('orders').doc();
       const orderId = orderRef.id;
 
+      // Normaliza URL do webhook com esquema obrigatório
+      let baseUrl = (process.env.APP_URL || '').trim();
+      if (!baseUrl) {
+        baseUrl = 'https://marketplace.frontmk.online';
+      } else if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
+        baseUrl = `https://${baseUrl}`;
+      }
+      baseUrl = baseUrl.replace(/\/+$/, '');
+
       // Chama a API da Mistic Pay
       const payload = {
         amount: total,
@@ -35,7 +44,7 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
         payerDocument: (customer.document || '00000000000').replace(/\D/g, ''),
         transactionId: orderId,
         description: `Pedido ${orderId.slice(-6).toUpperCase()}`,
-        projectWebhook: `${process.env.APP_URL || 'https://marketplace.frontmk.online'}/api/webhook/misticpay`
+        projectWebhook: `${baseUrl}/api/webhook/misticpay`
       };
 
       const response = await fetch(`${MISTIC_API_URL}/transactions/create`, {

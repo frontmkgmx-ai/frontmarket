@@ -3,12 +3,12 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useAuthStore } from '../../store/authStore';
 import { 
-  CreditCard, 
   QrCode, 
-  FileText, 
   CheckCircle2, 
   Save,
-  AlertCircle
+  AlertCircle,
+  Zap,
+  ShieldCheck
 } from 'lucide-react';
 import { FastCache } from '../../lib/cache';
 import { withTimeout } from '../../lib/asyncGuard';
@@ -23,21 +23,12 @@ export function Payments() {
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
-  // PIX Settings
+  // PIX Settings (MisticPay)
   const [pixEnabled, setPixEnabled] = useState(cachedSettings?.pixEnabled ?? true);
   const [pixKeyType, setPixKeyType] = useState(cachedSettings?.pixKeyType || 'cpf');
   const [pixKey, setPixKey] = useState(cachedSettings?.pixKey || '');
   const [pixRecipient, setPixRecipient] = useState(cachedSettings?.pixRecipient || activeStore?.name || '');
   const [pixCity, setPixCity] = useState(cachedSettings?.pixCity || 'São Paulo');
-
-  // Cartão de Crédito
-  const [cardEnabled, setCardEnabled] = useState(cachedSettings?.cardEnabled ?? true);
-  const [cardProvider, setCardProvider] = useState(cachedSettings?.cardProvider || 'mercadopago');
-  const [maxInstallments, setMaxInstallments] = useState(cachedSettings?.maxInstallments || 12);
-  const [interestFreeInstallments, setInterestFreeInstallments] = useState(cachedSettings?.interestFreeInstallments || 3);
-
-  // Boleto
-  const [boletoEnabled, setBoletoEnabled] = useState(cachedSettings?.boletoEnabled ?? false);
 
   useEffect(() => {
     async function loadSettings() {
@@ -60,11 +51,6 @@ export function Payments() {
           setPixKey(data.pixKey || '');
           setPixRecipient(data.pixRecipient || activeStore.name || '');
           setPixCity(data.pixCity || 'São Paulo');
-          setCardEnabled(data.cardEnabled ?? true);
-          setCardProvider(data.cardProvider || 'mercadopago');
-          setMaxInstallments(data.maxInstallments || 12);
-          setInterestFreeInstallments(data.interestFreeInstallments || 3);
-          setBoletoEnabled(data.boletoEnabled ?? false);
 
           if (cacheKey) FastCache.set(cacheKey, data);
         } else {
@@ -100,16 +86,12 @@ export function Payments() {
 
     try {
       const dataToSave = {
+        gateway: 'misticpay',
         pixEnabled,
         pixKeyType,
         pixKey,
         pixRecipient,
         pixCity,
-        cardEnabled,
-        cardProvider,
-        maxInstallments: Number(maxInstallments),
-        interestFreeInstallments: Number(interestFreeInstallments),
-        boletoEnabled,
         updatedAt: new Date().toISOString()
       };
 
@@ -120,7 +102,7 @@ export function Payments() {
       setTimeout(() => setSavedSuccess(false), 4000);
     } catch (err) {
       console.error(err);
-      alert('Erro ao salvar meios de pagamento');
+      alert('Erro ao salvar configurações de pagamento');
     } finally {
       setSaving(false);
     }
@@ -137,22 +119,22 @@ export function Payments() {
 
   return (
     <form onSubmit={handleSave} className="space-y-6 max-w-4xl">
-      {/* Header com HUD responsivo */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            <CreditCard className="w-6 h-6 sm:w-7 sm:h-7 text-indigo-600" />
-            Meios de Pagamento & Checkout
+            <QrCode className="w-6 h-6 sm:w-7 sm:h-7 text-teal-600" />
+            Configurações de Pagamento (MisticPay)
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Configure o recebimento via PIX instantâneo, Cartão de Crédito e Boleto
+            Sistema financeiro exclusivo via PIX integrado com a MisticPay
           </p>
         </div>
 
         <button
           type="submit"
           disabled={saving}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs sm:text-sm shadow-xs transition-all disabled:opacity-50 cursor-pointer self-start sm:self-auto"
+          className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs sm:text-sm shadow-xs transition-all disabled:opacity-50 cursor-pointer self-start sm:self-auto"
         >
           <Save className="w-4 h-4" />
           {saving ? 'Salvando...' : 'Salvar Alterações'}
@@ -162,9 +144,22 @@ export function Payments() {
       {savedSuccess && (
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl flex items-center gap-3 animate-in fade-in">
           <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-          <span className="text-xs sm:text-sm font-semibold">Configurações de pagamento salvas e ativadas com sucesso!</span>
+          <span className="text-xs sm:text-sm font-semibold">Configurações salvas e ativadas com sucesso!</span>
         </div>
       )}
+
+      {/* Card Info MisticPay */}
+      <div className="bg-gradient-to-r from-teal-500/10 via-emerald-500/10 to-teal-500/5 rounded-2xl border border-teal-200 p-5 flex items-start gap-4">
+        <div className="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center shrink-0">
+          <Zap className="w-5 h-5" />
+        </div>
+        <div className="space-y-1 text-xs sm:text-sm text-slate-700">
+          <p className="font-bold text-slate-900">MisticPay: Gateway Único & Checkout Integrado</p>
+          <p>
+            Todos os pedidos de todas as lojas são processados via PIX dinâmico com confirmação instantânea através da MisticPay. Os fundos são creditados diretamente na Carteira para saque rápido.
+          </p>
+        </div>
+      </div>
 
       {/* PIX Instantâneo */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs p-5 sm:p-6 space-y-4">
@@ -174,8 +169,8 @@ export function Payments() {
               <QrCode className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-sm sm:text-base font-bold text-slate-900">PIX Instantâneo</h2>
-              <p className="text-xs text-slate-500">Aprovação imediata com compensação em segundos</p>
+              <h2 className="text-sm sm:text-base font-bold text-slate-900">PIX no Checkout</h2>
+              <p className="text-xs text-slate-500">Aprovação imediata com compensação em tempo real</p>
             </div>
           </div>
           <label className="relative inline-flex items-center cursor-pointer">
@@ -193,12 +188,12 @@ export function Payments() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
             <div>
               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                Tipo de Chave PIX
+                Tipo de Chave PIX Padrão para Recebimentos
               </label>
               <select
                 value={pixKeyType}
                 onChange={e => setPixKeyType(e.target.value)}
-                className="w-full py-2 px-3 border border-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                className="w-full py-2 px-3 border border-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-teal-500 focus:outline-none"
               >
                 <option value="cpf">CPF / CNPJ</option>
                 <option value="email">E-mail</option>
@@ -239,7 +234,7 @@ export function Payments() {
                     }
                   }}
                   placeholder="Ex: 123.456.789-00 ou pix@sualoja.com"
-                  className={`w-full py-2 px-3 border ${pixError ? 'border-red-500' : (pixSuccess ? 'border-emerald-500' : 'border-slate-200')} rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-colors`}
+                  className={`w-full py-2 px-3 border ${pixError ? 'border-red-500' : (pixSuccess ? 'border-emerald-500' : 'border-slate-200')} rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-teal-500 focus:outline-none transition-colors`}
                 />
                 {pixError && (
                   <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -269,7 +264,7 @@ export function Payments() {
                 value={pixRecipient}
                 onChange={e => setPixRecipient(e.target.value)}
                 placeholder="Nome da sua loja ou titular da conta"
-                className="w-full py-2 px-3 border border-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                className="w-full py-2 px-3 border border-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-teal-500 focus:outline-none"
               />
             </div>
 
@@ -282,112 +277,20 @@ export function Payments() {
                 value={pixCity}
                 onChange={e => setPixCity(e.target.value)}
                 placeholder="Ex: São Paulo"
-                className="w-full py-2 px-3 border border-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                className="w-full py-2 px-3 border border-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-teal-500 focus:outline-none"
               />
             </div>
           </div>
         )}
       </div>
 
-      {/* Cartão de Crédito */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs p-5 sm:p-6 space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-              <CreditCard className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-sm sm:text-base font-bold text-slate-900">Cartão de Crédito</h2>
-              <p className="text-xs text-slate-500">Parcelamento em até 12x com antifraude inteligente</p>
-            </div>
-          </div>
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input 
-              type="checkbox" 
-              checked={cardEnabled} 
-              onChange={e => setCardEnabled(e.target.checked)}
-              className="sr-only peer" 
-            />
-            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-          </label>
-        </div>
-
-        {cardEnabled && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-1">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                Gateway de Pagamento
-              </label>
-              <select
-                value={cardProvider}
-                onChange={e => setCardProvider(e.target.value)}
-                className="w-full py-2 px-3 border border-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-              >
-                <option value="mercadopago">Mercado Pago</option>
-                <option value="stripe">Stripe</option>
-                <option value="asaas">Asaas</option>
-                <option value="pagarme">Pagar.me / Stone</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                Parcelas Máximas
-              </label>
-              <select
-                value={maxInstallments}
-                onChange={e => setMaxInstallments(Number(e.target.value))}
-                className="w-full py-2 px-3 border border-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-              >
-                <option value={1}>À vista (1x)</option>
-                <option value={3}>Até 3x</option>
-                <option value={6}>Até 6x</option>
-                <option value={10}>Até 10x</option>
-                <option value={12}>Até 12x</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                Sem Juros Até
-              </label>
-              <select
-                value={interestFreeInstallments}
-                onChange={e => setInterestFreeInstallments(Number(e.target.value))}
-                className="w-full py-2 px-3 border border-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-              >
-                <option value={1}>Somente 1x</option>
-                <option value={2}>Até 2x sem juros</option>
-                <option value={3}>Até 3x sem juros</option>
-                <option value={6}>Até 6x sem juros</option>
-                <option value={12}>Até 12x sem juros</option>
-              </select>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Boleto Bancário */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs p-5 sm:p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-              <FileText className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-sm sm:text-base font-bold text-slate-900">Boleto Bancário</h2>
-              <p className="text-xs text-slate-500">Compensação em até 1 a 3 dias úteis</p>
-            </div>
-          </div>
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input 
-              type="checkbox" 
-              checked={boletoEnabled} 
-              onChange={e => setBoletoEnabled(e.target.checked)}
-              className="sr-only peer" 
-            />
-            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
-          </label>
+      {/* Informação sobre Saques */}
+      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <ShieldCheck className="w-5 h-5 text-indigo-600 shrink-0" />
+          <p className="text-xs sm:text-sm text-slate-600">
+            Acompanhe o saldo acumulado e solicite saques diretamente pela aba <strong>Carteira</strong>.
+          </p>
         </div>
       </div>
     </form>
