@@ -30,6 +30,8 @@ export function ProductDetail() {
   const [added, setAdded] = useState(false);
   const navigate = useNavigate();
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
 
   const loadProduct = async () => {
     if (!store || !productSlug) return;
@@ -214,7 +216,7 @@ export function ProductDetail() {
               const mediaItems: { type: 'image' | 'video', url: string }[] = [];
               if (product.images && product.images.length > 0) {
                 product.images.forEach(img => {
-                  const isVideo = img.includes('?type=video') || img.match(/\.(mp4|webm|ogg)$/i);
+                  if (!img) return; const isVideo = typeof img === 'string' && (img.includes('?type=video') || img.match(/\.(mp4|webm|ogg)$/i));
                   mediaItems.push({ type: isVideo ? 'video' : 'image', url: img });
                 });
               }
@@ -240,8 +242,8 @@ export function ProductDetail() {
               };
 
 
-                  const [touchStart, setTouchStart] = useState<number | null>(null);
-                  const [touchEnd, setTouchEnd] = useState<number | null>(null);
+                  
+                  
 
                   const minSwipeDistance = 50;
 
