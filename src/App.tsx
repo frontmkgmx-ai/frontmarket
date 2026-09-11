@@ -21,6 +21,7 @@ import { Payments } from './pages/admin/Payments';
 import { Settings } from './pages/admin/Settings';
 import { Verification } from './pages/admin/Verification';
 import { Personalization } from './pages/admin/Personalization';
+import { EmailsConfig } from './pages/admin/EmailsConfig';
 import { Domains } from './pages/admin/Domains';
 import { Wallet } from './pages/admin/Wallet';
 import { HomeStore } from './pages/storefront/HomeStore';
@@ -71,6 +72,7 @@ export default function App() {
                 <Route path="domains" element={<Domains />} />
                 <Route path="payments" element={<Payments />} />
                 <Route path="verification" element={<Verification />} />
+                <Route path="emails" element={<EmailsConfig />} />
                 <Route path="personalization" element={<Personalization />} />
                 <Route path="settings" element={<Settings />} />
               </Route>

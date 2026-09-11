@@ -113,26 +113,6 @@ export function Verification() {
       setModalCameraError(null);
       setError(null);
       
-      if (!isForced) {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          throw new Error('Seu navegador não possui suporte para captura de vídeo pela câmera. Se estiver usando iframe, tente forçar a abertura.');
-        }
-
-        let stream: MediaStream;
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          stream.getTracks().forEach(track => track.stop());
-        } catch (camErr: any) {
-          if (camErr.name === 'NotAllowedError' || camErr.name === 'PermissionDeniedError') {
-            throw new Error('Permissão negada. Por favor, autorize o uso da câmera para a validação biométrica.');
-          } else if (camErr.name === 'NotFoundError' || camErr.name === 'DevicesNotFoundError') {
-            throw new Error('Nenhuma câmera foi detectada no seu dispositivo. Conecte uma câmera para continuar.');
-          } else {
-            throw new Error('Não foi possível acessar a câmera: ' + (camErr.message || 'Erro desconhecido'));
-          }
-        }
-      }
-
       setShowCameraModal(false);
 
       const user = auth.currentUser;

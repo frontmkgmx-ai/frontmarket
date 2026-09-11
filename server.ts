@@ -12,6 +12,7 @@ import { setupWalletRoutes } from "./server-wallet.js";
 import { startD3Scheduler } from './server-d3-scheduler.js';
 import { setupKycRoutes } from './server-kyc-routes.js';
 import { setupCustomerAuthRoutes } from './server-customer-auth.js';
+import { setupResendRoutes } from './server-resend.js';
 
 
 import { getAdminDb, getFirebaseAdmin } from './server-firebase-admin.js';
@@ -134,6 +135,7 @@ async function startServer() {
 
   // Módulo Seguro de Autenticação de Clientes da Vitrine (scrypt / Zero-Plaintext)
   setupCustomerAuthRoutes(app, getFirestore);
+  setupResendRoutes(app);
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {

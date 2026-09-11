@@ -16,7 +16,8 @@ import {
   Layers,
   ShieldCheck,
   Palette,
-  Wallet
+  Wallet,
+  Mail
 } from 'lucide-react';
 
 import { useState } from 'react';
@@ -47,6 +48,7 @@ export function DashboardLayout() {
     { name: 'Clientes', icon: Users, path: '/admin/customers' },
     { name: 'Domínios', icon: ExternalLink, path: '/admin/domains' },
     { name: 'Verificação', icon: ShieldCheck, path: '/admin/verification' },
+    { name: 'Emails', icon: Mail, path: '/admin/emails' },
     { name: 'Personalização', icon: Palette, path: '/admin/personalization' },
     { name: 'Configurações', icon: Settings, path: '/admin/settings' },
   ];
