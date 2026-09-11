@@ -17,7 +17,8 @@ import {
   Check, 
   Loader2,
   Lock,
-  ShoppingBag
+  ShoppingBag,
+  RefreshCw,
 } from 'lucide-react';
 
 export function Checkout() {
@@ -37,6 +38,34 @@ export function Checkout() {
 
 
   const [orderPaid, setOrderPaid] = useState(false);
+
+  const [checkingPayment, setCheckingPayment] = useState(false);
+
+  const handleManualCheck = async () => {
+    if (!orderId || !store?.id) return;
+    try {
+      setCheckingPayment(true);
+      const res = await fetch('/api/checkout/misticpay/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeId: store.id, orderId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === 'paid' || data.status === 'processing' || data.status === 'shipped' || data.status === 'delivered') {
+          setOrderPaid(true);
+        } else {
+          alert('Pagamento ainda não confirmado. Verifique se o PIX foi concluído e tente novamente em alguns segundos.');
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao verificar status:", err);
+      alert('Erro ao verificar status do pagamento.');
+    } finally {
+      setCheckingPayment(false);
+    }
+  };
+
 
   // Poll for payment status
   useEffect(() => {
@@ -267,8 +296,24 @@ export function Checkout() {
                   <span>{copiedPix ? 'Copiado!' : 'Copiar'}</span>
                 </button>
               </div>
+
+              <div className="pt-3">
+                <button
+                  onClick={handleManualCheck}
+                  disabled={checkingPayment}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-xl text-sm font-bold transition-colors disabled:opacity-50"
+                >
+                  {checkingPayment ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <CheckCircle className="w-4 h-4" />
+                  )}
+                  {checkingPayment ? 'Verificando pagamento...' : 'Já paguei (Verificar agora)'}
+                </button>
+              </div>
             </div>
           )}
+
 
 
           <div className="pt-2">

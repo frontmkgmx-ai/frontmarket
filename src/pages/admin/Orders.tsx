@@ -19,7 +19,8 @@ import {
   Mail,
   MapPin,
   Banknote,
-  FileText
+  FileText,
+  RefreshCw,
 } from 'lucide-react';
 import { FastCache } from '../../lib/cache';
 
@@ -87,13 +88,13 @@ export function Orders() {
 
 
   const handleMisticSync = async (orderId: string) => {
-    if (!store) return;
+    if (!activeStore) return;
     try {
       setUpdatingStatus(true);
       const res = await fetch('/api/checkout/misticpay/status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeId: store.id, orderId })
+        body: JSON.stringify({ storeId: activeStore.id, orderId })
       });
       const data = await res.json();
       
@@ -353,7 +354,8 @@ export function Orders() {
                     const isDisabled = 
                       updatingStatus || 
                       selectedOrder.status === st || 
-                      st === 'paid';
+                      st === 'paid' ||
+                      selectedOrder.status === 'cancelled';
 
                     return (
                       <button

@@ -44,20 +44,20 @@ export function Wallet() {
   const [syncingWithdrawal, setSyncingWithdrawal] = useState<string | null>(null);
 
   const handleSyncWithdrawal = async (withdrawalId: string) => {
-    if (!storeId) return;
+    if (!activeStore?.id) return;
     try {
       setSyncingWithdrawal(withdrawalId);
       const res = await fetch('/api/misticpay/withdrawals/status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeId, withdrawalId })
+        body: JSON.stringify({ storeId: activeStore.id, withdrawalId })
       });
       const data = await res.json();
       
       if (res.ok) {
         if (data.reconciled) {
           alert('Status atualizado: ' + data.status);
-          fetchWalletData(); // Refresh UI
+          fetchWallet(); // Refresh UI
         } else {
           alert('Status na Mistic Pay continua: ' + data.status + ' (' + data.reason + ')');
         }
