@@ -1116,10 +1116,18 @@ export class FinancialWalletService {
     try {
       const base64Auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
       const webhookSecret = (process.env.MISTIC_PAY_WEBHOOK_SECRET || '').trim();
+      if (!webhookSecret) {
+        console.error(`[MisticPay Withdrawal] Erro crítico: MISTIC_PAY_WEBHOOK_SECRET não configurado.`);
+        return {
+          success: false,
+          status: 'error',
+          code: 'CONFIG_ERROR',
+          message: 'Configuração do gateway incompleta (MISTIC_PAY_WEBHOOK_SECRET ausente).',
+          requestId
+        };
+      }
       const baseAppUrl = (process.env.APP_URL || 'https://marketplace.frontmk.online').replace(/\/+$/, '');
-      const webhookUrl = webhookSecret
-        ? `${baseAppUrl}/api/webhook/misticpay?token=${encodeURIComponent(webhookSecret)}`
-        : `${baseAppUrl}/api/webhook/misticpay`;
+      const webhookUrl = `${baseAppUrl}/api/webhook/misticpay?token=${encodeURIComponent(webhookSecret)}`;
 
       // Timeout explícito com AbortController (15s)
       const controller = new AbortController();

@@ -26,42 +26,82 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
     return `Basic ${base64Auth}`;
   };
 
+  interface MisticActiveCheckResult {
+    status: 'SUCCESS' | 'REJECTED' | 'NOT_FOUND' | 'UNAVAILABLE' | 'INVALID_RESPONSE';
+    state?: string;
+    reason?: string;
+    data?: any;
+  }
+
   /**
    * Consulta ativa e autoritativa de transação na MisticPay (Double-Check de Segurança)
-   * Impede que webhooks forjados por terceiros aprovem pagamentos sem registro no gateway.
+   * Impede que webhooks forjados ou inconclusivos aprovem pagamentos sem confirmação real no gateway.
    */
-  const checkTransactionWithMistic = async (transactionId: string): Promise<any | null> => {
-    // Permite bypass estritamente em ambiente de teste automatizado isolado se explicitamente configurado
-    if (process.env.MISTIC_PAY_SKIP_ACTIVE_CHECK === 'true') {
+  const checkTransactionWithMistic = async (transactionId: string): Promise<MisticActiveCheckResult> => {
+    // Proibido em produção! Bypass permitido estritamente em testes locais com NODE_ENV !== 'production'
+    if (process.env.NODE_ENV !== 'production' && process.env.MISTIC_PAY_SKIP_ACTIVE_CHECK === 'true') {
       return {
-        transaction: {
-          transactionId,
-          transactionState: 'COMPLETO'
-        }
+        status: 'SUCCESS',
+        state: 'COMPLETO',
+        data: { transaction: { transactionId, transactionState: 'COMPLETO' } }
       };
     }
 
+    let authHeader: string;
     try {
-      const authHeader = getMisticAuthHeader();
+      authHeader = getMisticAuthHeader();
+    } catch (authErr: any) {
+      console.error(`[MisticPay Active Check] Falha de credenciais ao verificar ${transactionId}:`, authErr.message);
+      return { status: 'UNAVAILABLE', reason: 'Credenciais da MisticPay ausentes ou incompletas no servidor' };
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout defensivo
+
+    try {
       const response = await fetch(`${MISTIC_API_URL}/transactions/check`, {
         method: 'POST',
         headers: {
           'Authorization': authHeader,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ transactionId })
+        body: JSON.stringify({ transactionId }),
+        signal: controller.signal
       });
+      clearTimeout(timeout);
+
+      if (response.status === 404) {
+        return { status: 'NOT_FOUND', reason: 'Transação não encontrada no gateway MisticPay.' };
+      }
 
       if (!response.ok) {
         console.warn(`[MisticPay Active Check] Gateway retornou HTTP ${response.status} ao consultar transação ${transactionId}`);
-        return null;
+        return { status: 'UNAVAILABLE', reason: `Gateway HTTP ${response.status}` };
       }
 
-      const data = await response.json();
-      return data;
+      const data: any = await response.json();
+      const transaction = data?.data || data?.transaction || data;
+      const state = String(transaction?.transactionState || transaction?.status || '').toUpperCase();
+
+      if (state === 'COMPLETO' || state === 'PAID' || state === 'SUCESSO' || state === 'COMPLETED') {
+        return { status: 'SUCCESS', state, data };
+      } else if (
+        state === 'FALHA' ||
+        state === 'CANCELADO' ||
+        state === 'REJEITADO' ||
+        state === 'EXPIRED' ||
+        state === 'FAILED'
+      ) {
+        return { status: 'REJECTED', state, data };
+      } else {
+        return { status: 'INVALID_RESPONSE', state, reason: `Estado inconclusivo do gateway: ${state}` };
+      }
     } catch (err: any) {
-      console.error(`[MisticPay Active Check] Falha de rede ou configuração ao consultar ${transactionId}:`, err.message);
-      return null;
+      clearTimeout(timeout);
+      const isTimeout = err.name === 'AbortError';
+      const reason = isTimeout ? 'Timeout na consulta autoritativa do gateway' : (err.message || 'Erro de rede na consulta autoritativa');
+      console.error(`[MisticPay Active Check] ${reason} para transação ${transactionId}`);
+      return { status: 'UNAVAILABLE', reason };
     }
   };
 
@@ -153,9 +193,15 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
       baseUrl = baseUrl.replace(/\/+$/, '');
 
       const webhookSecret = (process.env.MISTIC_PAY_WEBHOOK_SECRET || '').trim();
-      const projectWebhook = webhookSecret
-        ? `${baseUrl}/api/webhook/misticpay?token=${encodeURIComponent(webhookSecret)}`
-        : `${baseUrl}/api/webhook/misticpay`;
+      if (!webhookSecret) {
+        console.error('[MisticPay Checkout] Falha de configuração: MISTIC_PAY_WEBHOOK_SECRET não configurado no servidor.');
+        return res.status(503).json({
+          error: 'Serviço temporariamente indisponível: configuração de segurança do gateway incompleta.',
+          code: 'GATEWAY_CONFIG_MISSING'
+        });
+      }
+
+      const projectWebhook = `${baseUrl}/api/webhook/misticpay?token=${encodeURIComponent(webhookSecret)}`;
 
       // Chama a API da Mistic Pay com payload oficial usando SEMPRE o total calculado pelo backend
       const payload = {
@@ -255,20 +301,29 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
       return res.status(429).json({ error: 'Too Many Requests' });
     }
 
-    // 2. Validação de Autenticação / Webhook Secret (Fail-Closed se configurado)
+    // 2. Validação de Autenticação / Webhook Secret (Fail-Closed Obrigatório)
     const configuredSecret = (process.env.MISTIC_PAY_WEBHOOK_SECRET || '').trim();
-    if (configuredSecret) {
-      const incomingToken = (
-        (req.query.token as string) ||
-        (req.headers['x-webhook-secret'] as string) ||
-        (req.headers['authorization'] as string)?.replace(/^Bearer\s+/i, '') ||
-        ''
-      ).trim();
+    if (!configuredSecret) {
+      console.error(`[MisticPay Webhook] Erro crítico: MISTIC_PAY_WEBHOOK_SECRET não configurado no servidor. Rejeitando requisição (Fail-Closed 503).`);
+      return res.status(503).json({
+        error: 'Service Unavailable: Webhook processing configuration is missing on server.',
+        code: 'WEBHOOK_CONFIG_MISSING'
+      });
+    }
 
-      if (!incomingToken || !constantTimeCompare(incomingToken, configuredSecret)) {
-        console.warn(`[MisticPay Webhook] Falha de autenticação (Token inválido ou ausente) de ${clientIp}`);
-        return res.status(401).json({ error: 'Unauthorized: Webhook secret mismatch or missing.' });
-      }
+    const incomingToken = (
+      (req.query.token as string) ||
+      (req.headers['x-webhook-secret'] as string) ||
+      (req.headers['authorization'] as string)?.replace(/^Bearer\s+/i, '') ||
+      ''
+    ).trim();
+
+    if (!incomingToken || !constantTimeCompare(incomingToken, configuredSecret)) {
+      console.warn(`[MisticPay Webhook] Falha de autenticação (Token inválido ou ausente) de ${clientIp}`);
+      return res.status(401).json({
+        error: 'Unauthorized: Webhook secret mismatch or missing.',
+        code: 'WEBHOOK_UNAUTHORIZED'
+      });
     }
 
     // 3. Captura e validação segura do Payload Bruto
@@ -398,19 +453,67 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
             }
           }
 
-          // 2. Verificação Ativa de Segurança com a API Oficial da MisticPay (Double-Check)
+          // 2. Verificação Ativa de Segurança com a API Oficial da MisticPay (Double-Check Autoritativo Obrigatório)
           const misticCheckTxId = String(orderData.misticTransactionId || transactionId);
           const activeCheck = await checkTransactionWithMistic(misticCheckTxId);
 
-          if (activeCheck) {
-            const checkState = (activeCheck.transaction?.transactionState || activeCheck.transaction?.status || '').toUpperCase();
-            if (checkState !== 'COMPLETO' && checkState !== 'PAID') {
-              console.warn(`[MisticPay Webhook] Verificação ativa rejeitou: estado no gateway é '${checkState}' (esperado COMPLETO).`);
-              return res.status(400).json({
-                error: 'Transação não confirmada como completa pela API autoritativa do gateway.',
-                code: 'ACTIVE_CHECK_FAILED'
-              });
-            }
+          if (activeCheck.status === 'REJECTED') {
+            console.warn(`[MisticPay Webhook] Verificação ativa rejeitou: estado no gateway é '${activeCheck.state}' (esperado COMPLETO).`);
+            return res.status(400).json({
+              error: 'Transação não confirmada como completa pela API autoritativa do gateway.',
+              code: 'ACTIVE_CHECK_FAILED',
+              state: activeCheck.state
+            });
+          }
+
+          if (activeCheck.status === 'NOT_FOUND') {
+            console.warn(`[MisticPay Webhook] Transação ${misticCheckTxId} não encontrada na API da MisticPay.`);
+            return res.status(404).json({
+              error: 'Transação não encontrada no gateway MisticPay.',
+              code: 'TRANSACTION_NOT_FOUND'
+            });
+          }
+
+          if (activeCheck.status !== 'SUCCESS') {
+            // Se o active check falhar por timeout, 500, indisponibilidade de rede ou resposta inválida:
+            // Regra Fail-Closed: NÃO confirmar pagamento, NÃO creditar wallet, NÃO liberar saldo, NÃO iniciar D+3!
+            // Registra o pedido como pending_verification e o evento como reconciliation_required
+            console.warn(`[MisticPay Webhook] Active check inconclusivo (${activeCheck.status}: ${activeCheck.reason}). Marcando pedido ${orderId} para reconciliação.`);
+
+            await orderDoc.ref.update({
+              status: 'pending_verification',
+              reconciliationRequired: true,
+              lastVerificationError: activeCheck.reason || activeCheck.status,
+              verificationAttemptedAt: FieldValue.serverTimestamp(),
+              updatedAt: FieldValue.serverTimestamp()
+            });
+
+            await WebhookService.claimEvent(db, {
+              provider: 'misticpay',
+              eventId,
+              eventType: 'DEPOSITO',
+              payloadHash,
+              entityId: orderId,
+              tenantId: storeId,
+              userId: orderData.customerId || null
+            });
+
+            await WebhookService.finalizeEvent(db, {
+              provider: 'misticpay',
+              eventId,
+              status: 'reconciliation_required',
+              metadata: {
+                orderId,
+                storeId,
+                reason: activeCheck.reason || activeCheck.status
+              }
+            });
+
+            return res.status(503).json({
+              status: 'reconciliation_required',
+              message: 'Não foi possível obter confirmação autoritativa do gateway no momento. Operação retida para reconciliação segura.',
+              code: 'ACTIVE_CHECK_UNAVAILABLE'
+            });
           }
 
           // 3. Claim Atômico do Evento de Webhook

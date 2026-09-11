@@ -2,21 +2,59 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    match /stores/{storeId}/{allPaths=**} {
-      // Leitura pública permitida para ativos públicos da loja (logos, banners, produtos)
-      allow read: if true;
-      // Escrita estritamente restrita ao proprietário da loja com limite de 15MB e tipo imagem
-      allow write: if request.auth != null && (
+    
+    // Função auxiliar para verificar autenticação
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Função auxiliar para verificar propriedade da loja via Firestore
+    function isStoreOwner(storeId) {
+      return isAuthenticated() && (
         firestore.get(/databases/(default)/documents/stores/$(storeId)).data.ownerId == request.auth.uid ||
-        request.auth.token.storeId == storeId
-      ) && request.resource.size < 15 * 1024 * 1024
+        (request.auth.token.storeId != null && request.auth.token.storeId == storeId)
+      );
+    }
+
+    // Função auxiliar para validação de imagem e tamanho (máx 15MB)
+    function isValidImage() {
+      return request.resource.size < 15 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
 
+    // Função auxiliar para validação de documentos gerais (máx 15MB)
+    function isValidDocument() {
+      return request.resource.size < 15 * 1024 * 1024;
+    }
+
+    // 1. Arquivos PÚBLICOS da loja (apenas assets públicos: logos, banners, catálogo de produtos)
+    // Namespace restrito estritamente a /public/
+    match /stores/{storeId}/public/{allPaths=**} {
+      allow read: if true;
+      allow write: if isStoreOwner(storeId) && isValidImage();
+    }
+
+    // 2. Arquivos PRIVADOS da loja (documentos fiscais, relatórios financeiros, notas e configs privadas)
+    // Namespace estritamente privado: leitura e escrita apenas para o proprietário autorizado da loja
+    match /stores/{storeId}/private/{allPaths=**} {
+      allow read, write: if isStoreOwner(storeId) && isValidDocument();
+    }
+
+    // 3. Arquivos PRIVADOS de usuário (perfil, documentos pessoais)
+    // Apenas o próprio usuário autenticado pode ler e escrever
     match /users/{userId}/{allPaths=**} {
-      // Arquivos privados de usuário (apenas o próprio usuário, máx 15MB)
-      allow read, write: if request.auth != null && request.auth.uid == userId
-        && request.resource.size < 15 * 1024 * 1024;
+      allow read, write: if isAuthenticated() && request.auth.uid == userId && isValidDocument();
+    }
+
+    // 4. Arquivos PRIVADOS de verificação de identidade e KYC
+    // Acesso exclusivo ao próprio titular autenticado (proibido qualquer acesso público)
+    match /kyc/{userId}/{allPaths=**} {
+      allow read, write: if isAuthenticated() && request.auth.uid == userId && isValidDocument();
+    }
+
+    // 5. Bloqueio global FAIL-CLOSED para qualquer namespace não explicitamente autorizado
+    match /{allPaths=**} {
+      allow read, write: if false;
     }
   }
 }
