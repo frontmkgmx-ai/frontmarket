@@ -184,8 +184,8 @@ export function setupCustomerAuthRoutes(app: express.Express, getDb: any) {
         },
         totalOrders: 0,
         totalSpent: 0,
-        createdAt: new Date().toISOString(),
-        serverCreatedAt: FieldValue.serverTimestamp()
+        createdAt: FieldValue.serverTimestamp(),
+        registeredAtIso: new Date().toISOString()
       };
 
       await db.collection('stores').doc(storeId).collection('customers').doc(customerId).set(customerDocData);

@@ -320,9 +320,7 @@ export function Orders() {
                     const isDisabled = 
                       updatingStatus || 
                       selectedOrder.status === st || 
-                      st === 'paid' || 
-                      (selectedOrder.status === 'pending' && st !== 'cancelled') || 
-                      (st === 'refunded' && (selectedOrder.status === 'pending' || selectedOrder.status === 'cancelled'));
+                      st === 'paid';
 
                     return (
                       <button

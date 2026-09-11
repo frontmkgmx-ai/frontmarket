@@ -5,7 +5,11 @@ const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
-  'image/gif'
+  'image/gif',
+  'video/mp4',
+  'video/webm',
+  'video/ogg',
+  'video/quicktime'
 ]);
 
 const upload = multer({ 
@@ -14,7 +18,7 @@ const upload = multer({
   },
   fileFilter: (_req, file, cb) => {
     if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
-      const err = new Error('Tipo de arquivo não permitido. Apenas JPEG, PNG, WEBP e GIF são aceitos.');
+      const err = new Error('Tipo de arquivo não permitido. Apenas Imagens (JPEG, PNG, WEBP, GIF) e Vídeos (MP4, WEBM, OGG) são aceitos.');
       (err as any).statusCode = 400;
       return cb(err);
     }
@@ -47,6 +51,8 @@ export function setupStreamxRoutes(app: express.Express, authMiddleware: any) {
 
       const contentType = response.headers.get('content-type');
       if (contentType && ALLOWED_MIME_TYPES.has(contentType.split(';')[0])) {
+        res.setHeader('Content-Type', contentType);
+      } else if (contentType && contentType.startsWith('video/')) {
         res.setHeader('Content-Type', contentType);
       } else {
         res.setHeader('Content-Type', 'image/jpeg');

@@ -63,7 +63,7 @@ export function Customers() {
     // Escuta em tempo real os clientes cadastrados nesta loja
     const q = query(
       collection(db, 'stores', activeStore.id, 'customers'),
-      orderBy('createdAt', 'desc')
+      // orderBy('createdAt', 'desc') - removido para evitar falha de indexação mista
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -125,8 +125,9 @@ export function Customers() {
         return (b.totalOrders || 0) - (a.totalOrders || 0);
       }
       // recent
-      const dateA = new Date(a.createdAt || 0).getTime();
-      const dateB = new Date(b.createdAt || 0).getTime();
+      const getMs = (val: any) => typeof val?.toDate === 'function' ? val.toDate().getTime() : (val?.seconds ? val.seconds * 1000 : new Date(val || 0).getTime());
+      const dateA = getMs(a.createdAt);
+      const dateB = getMs(b.createdAt);
       return dateB - dateA;
     });
 
