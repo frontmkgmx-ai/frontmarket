@@ -49,6 +49,7 @@ export function Orders() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [resendingEmail, setResendingEmail] = useState(false);
 
   useEffect(() => {
     if (!activeStore?.id) {
@@ -118,6 +119,32 @@ export function Orders() {
     }
   };
 
+
+  const handleResendEmail = async (orderId: string, currentStatus: string) => {
+    if (!activeStore) return;
+    setResendingEmail(true);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch(`/api/orders/${activeStore.id}/${orderId}/trigger-email`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ status: currentStatus })
+      });
+      if (res.ok) {
+        alert('E-mail reenviado com sucesso!');
+      } else {
+        alert('Erro ao reenviar e-mail.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao reenviar e-mail');
+    } finally {
+      setResendingEmail(false);
+    }
+  };
 
   const handleRefund = async (orderId: string) => {
     if (!activeStore || !confirm('Tem certeza que deseja solicitar o reembolso deste pedido? O valor será devolvido ao cliente e não poderá ser desfeito.')) return;
@@ -436,8 +463,16 @@ export function Orders() {
                     </button>
                   </div>
                 )}
-                {selectedOrder.status === 'paid' && (
-                  <div className="mt-4 flex justify-end">
+                <div className="mt-4 flex justify-end gap-2">
+                  <button
+                    disabled={resendingEmail}
+                    onClick={() => handleResendEmail(selectedOrder.id, selectedOrder.status)}
+                    className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    <Mail className={`w-4 h-4 ${resendingEmail ? 'animate-pulse' : ''}`} />
+                    Reenviar E-mail
+                  </button>
+                  {selectedOrder.status === 'paid' && (
                     <button
                       disabled={updatingStatus}
                       onClick={() => handleRefund(selectedOrder.id)}
@@ -446,8 +481,8 @@ export function Orders() {
                       <RotateCcw className={`w-4 h-4 ${updatingStatus ? 'animate-spin' : ''}`} />
                       Solicitar Reembolso
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
 
               </div>
 
