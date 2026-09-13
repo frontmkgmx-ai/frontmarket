@@ -137,11 +137,11 @@ async function startServer() {
       if (result.success) {
         res.json({ success: true, provider: 'resend', messageId: result.providerMessageId });
       } else {
-        res.status(500).json({ success: false, provider: 'resend', code: result.error });
+        res.status(500).json({ error: result.error });
       }
     } catch (err: any) {
       console.error('[Test Email] Error:', err.message);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Internal server error', details: err.message, stack: err.stack });
     }
   });
 
@@ -255,11 +255,11 @@ async function startServer() {
       if (result.success) {
         res.json({ success: true, provider: 'resend', messageId: result.providerMessageId });
       } else {
-        res.status(500).json({ success: false, provider: 'resend', code: result.error });
+        res.status(500).json({ error: result.error });
       }
     } catch (err) {
       console.error('[Test Email Template] Error:', err.message);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Internal server error', details: err.message, stack: err.stack });
     }
   });
 

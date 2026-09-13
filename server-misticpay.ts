@@ -424,7 +424,7 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
         return res.status(401).json({ error: 'Não autorizado. Token ausente.' });
       }
       const token = authHeader.split('Bearer ')[1];
-      const { getAuth } = require('firebase-admin/auth');
+      const { getAuth } = await import('firebase-admin/auth');
       const { getFirebaseAdmin, getAdminDb } = require('./server-firebase-admin.js');
       const admin = getFirebaseAdmin();
       const decodedToken = await getAuth(admin).verifyIdToken(token);
