@@ -18,13 +18,40 @@ export function ProductDetail() {
   const { store, currentTheme } = useOutletContext<{ store: Store; currentTheme: ThemeConfig }>();
   const { productSlug } = useParams<{ productSlug: string }>();
   
-  const cacheKey = store && productSlug ? `prod_${store.id}_${productSlug}` : '';
-  const [product, setProduct] = useState<Product | null>(() => {
-    return cacheKey ? FastCache.get<Product>(cacheKey) : null;
-  });
-  const [loading, setLoading] = useState<boolean>(() => {
-    return cacheKey ? !FastCache.get<Product>(cacheKey) : true;
-  });
+  // Tenta resolver o produto imediatamente a partir de múltiplos níveis de cache
+  const initialCachedProduct = (): Product | null => {
+    if (!store || !productSlug) return null;
+    const cleanSlug = decodeURIComponent(productSlug).trim();
+    const lowerSlug = cleanSlug.toLowerCase();
+
+    // 1. Chave direta por slug ou ID
+    const direct1 = FastCache.get<Product>(`prod_${store.id}_${cleanSlug}`);
+    if (direct1) return direct1;
+    const direct2 = FastCache.get<Product>(`prod_${store.slug}_${cleanSlug}`);
+    if (direct2) return direct2;
+    const direct3 = FastCache.get<Product>(`prod_${store.id}_${lowerSlug}`);
+    if (direct3) return direct3;
+
+    // 2. Busca na lista de produtos da loja em cache (carregada na vitrine)
+    const list1 = FastCache.get<Product[]>(`products_${store.id}`);
+    const list2 = FastCache.get<Product[]>(`products_${store.slug}`);
+    const storeProducts = list1 || list2;
+
+    if (storeProducts && Array.isArray(storeProducts)) {
+      const match = storeProducts.find(p => 
+        p.id === cleanSlug ||
+        (p.slug && p.slug.trim().toLowerCase() === lowerSlug) ||
+        (p.slug && p.slug === cleanSlug)
+      );
+      if (match) return match;
+    }
+
+    return null;
+  };
+
+  const [product, setProduct] = useState<Product | null>(initialCachedProduct);
+  const [loading, setLoading] = useState<boolean>(() => !initialCachedProduct());
+  const [loadError, setLoadError] = useState<string | null>(null);
   
   const { addItem } = useCartStore();
   const [added, setAdded] = useState(false);
@@ -35,34 +62,108 @@ export function ProductDetail() {
 
   const loadProduct = async () => {
     if (!store || !productSlug) return;
+    setLoadError(null);
+
+    const cleanSlug = decodeURIComponent(productSlug).trim();
+    const lowerSlug = cleanSlug.toLowerCase();
+
     try {
-      const q = query(
-        collection(db, 'stores', store.id, 'products'),
-        where('slug', '==', productSlug)
+      // TIER 1: API Segura e Instantânea do Servidor (~30ms, imune a problemas de rede/ad-blockers)
+      try {
+        const storeIdentifier = store.slug || store.id;
+        const res = await fetch(`/api/public/stores/${encodeURIComponent(storeIdentifier)}/products/${encodeURIComponent(cleanSlug)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.product) {
+            const foundProd = data.product as Product;
+            setProduct(foundProd);
+            FastCache.set(`prod_${store.id}_${cleanSlug}`, foundProd);
+            FastCache.set(`prod_${store.id}_${foundProd.id}`, foundProd);
+            if (foundProd.slug) {
+              FastCache.set(`prod_${store.id}_${foundProd.slug}`, foundProd);
+              FastCache.set(`prod_${store.slug}_${foundProd.slug}`, foundProd);
+            }
+            setLoading(false);
+            return;
+          }
+        }
+      } catch (apiErr) {
+        console.warn("[ProductDetail] API pública temporariamente indisponível, tentando Firestore direto:", apiErr);
+      }
+
+      // TIER 2: Firestore direto no cliente com suporte a slug exato, minúsculas e ID
+      const productsRef = collection(db, 'stores', store.id, 'products');
+
+      // 2a. Busca por slug exato
+      let q = query(productsRef, where('slug', '==', cleanSlug));
+      let snapshot = await withTimeout(
+        getDocs(q),
+        8000,
+        undefined,
+        'Tempo limite ao buscar produto.'
       );
 
-      const snapshot = await withTimeout(
-        getDocs(q),
-        3500,
-        undefined,
-        'Busca do produto demorou além do esperado.'
-      );
+      // 2b. Busca por slug em minúsculas se diferir
+      if ((!snapshot || snapshot.empty) && cleanSlug !== lowerSlug) {
+        const qLower = query(productsRef, where('slug', '==', lowerSlug));
+        snapshot = await withTimeout(getDocs(qLower), 4000, undefined, 'Tempo limite.');
+      }
+
+      // 2c. Se não encontrou por slug, busca por Document ID
+      if (!snapshot || snapshot.empty) {
+        try {
+          const qId = query(productsRef, where('__name__', '==', cleanSlug));
+          const idSnap = await getDocs(qId);
+          if (!idSnap.empty) {
+            snapshot = idSnap;
+          }
+        } catch (_) {}
+      }
+
+      // 2d. Fallback abrangente: obter produtos da loja e casar em memória
+      if (!snapshot || snapshot.empty) {
+        try {
+          const allSnap = await getDocs(productsRef);
+          const foundDoc = allSnap.docs.find(doc => {
+            const d = doc.data();
+            const s = (d.slug || '').trim().toLowerCase();
+            return doc.id === cleanSlug || s === lowerSlug || s.replace(/[^a-z0-9]/g, '') === lowerSlug.replace(/[^a-z0-9]/g, '');
+          });
+          if (foundDoc) {
+            const found = { id: foundDoc.id, ...foundDoc.data() } as Product;
+            setProduct(found);
+            FastCache.set(`prod_${store.id}_${cleanSlug}`, found);
+            FastCache.set(`prod_${store.id}_${found.id}`, found);
+            setLoading(false);
+            return;
+          }
+        } catch (_) {}
+      }
 
       if (snapshot && !snapshot.empty) {
         const found = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Product;
         setProduct(found);
-        if (cacheKey) FastCache.set(cacheKey, found);
+        FastCache.set(`prod_${store.id}_${cleanSlug}`, found);
+        FastCache.set(`prod_${store.id}_${found.id}`, found);
+        if (found.slug) {
+          FastCache.set(`prod_${store.id}_${found.slug}`, found);
+          FastCache.set(`prod_${store.slug}_${found.slug}`, found);
+        }
       } else if (!product) {
         setProduct(null);
       }
     } catch (err: any) {
       console.warn("Aviso ao carregar produto:", err.message || err);
+      if (!product) {
+        setLoadError(err.message || 'Falha na conexão ao carregar produto');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    // Se não tiver produto em cache, ou se o slug mudar, recarrega
     loadProduct();
   }, [store?.id, productSlug]);
 
@@ -129,8 +230,8 @@ export function ProductDetail() {
     return (
       <SmartLoader 
         message="Carregando detalhes do produto..." 
-        timeoutSeconds={3.5} 
-        onRetry={loadProduct}
+        timeoutSeconds={10} 
+        onRetry={() => { setLoading(true); loadProduct(); }}
         fullScreen={false}
       />
     );
@@ -139,23 +240,30 @@ export function ProductDetail() {
   if (!product) {
     return (
       <div className="text-center py-16 sm:py-24 max-w-md mx-auto px-4">
-        <h2 className="text-lg font-bold text-slate-800 mb-2">Produto não encontrado</h2>
+        <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
+          <RefreshCw className="w-6 h-6 stroke-[1.5]" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-800 mb-2">
+          {loadError ? 'Dificuldade ao carregar produto' : 'Produto não encontrado'}
+        </h2>
         <p className="text-xs text-slate-500 mb-6">
-          O produto que você procura pode ter sido alterado ou removido pelo lojista.
+          {loadError 
+            ? 'Não foi possível estabelecer conexão para carregar os dados. Por favor, tente novamente.'
+            : 'O produto que você procura pode ter sido alterado ou removido pelo lojista.'}
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
           <button
             onClick={() => { setLoading(true); loadProduct(); }}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 bg-opacity-10 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             Tentar Novamente
           </button>
           <Link 
             to={`/${store.slug}`} 
-            className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition-colors"
+            className="w-full sm:w-auto inline-flex items-center justify-center px-5 py-2.5 bg-[#007AFF] hover:bg-[#0066CC] text-white text-xs font-semibold rounded-xl transition-colors shadow-xs"
           >
-            Voltar para o catálogo
+            Voltar para a vitrine
           </Link>
         </div>
       </div>

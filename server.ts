@@ -14,6 +14,7 @@ import { startEmailRetryScheduler } from './server-email-retry.js';
 import { setupKycRoutes } from './server-kyc-routes.js';
 import { setupCustomerAuthRoutes } from './server-customer-auth.js';
 import { setupResendRoutes } from './server-resend.js';
+import { setupPublicStoreRoutes } from './server-public-store.js';
 
 
 import { getAdminDb, getFirebaseAdmin } from './server-firebase-admin.js';
@@ -472,6 +473,7 @@ async function startServer() {
   // Módulo Seguro de Autenticação de Clientes da Vitrine (scrypt / Zero-Plaintext)
   setupCustomerAuthRoutes(app, getFirestore);
   setupResendRoutes(app);
+  setupPublicStoreRoutes(app);
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {

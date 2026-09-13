@@ -203,30 +203,67 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
       baseUrl = baseUrl.replace(/\/+$/, '');
 
       const webhookSecret = (process.env.MISTIC_PAY_WEBHOOK_SECRET || '').trim();
-      if (!webhookSecret) {
-        console.error('[MisticPay Checkout] Falha de configuração: MISTIC_PAY_WEBHOOK_SECRET não configurado no servidor.');
-        return res.status(503).json({
-          error: 'Serviço temporariamente indisponível: configuração de segurança do gateway incompleta.',
-          code: 'GATEWAY_CONFIG_MISSING'
+      const projectWebhook = webhookSecret 
+        ? `${baseUrl}/api/webhook/misticpay?token=${encodeURIComponent(webhookSecret)}`
+        : `${baseUrl}/api/webhook/misticpay`;
+
+      // Resolução estrita dos dados do pagador conforme especificação oficial da Mistic Pay
+      const { payerName, payerDocument, splitUser, splitTax } = req.body;
+      const cleanPayerName = (payerName || customer?.name || '').trim();
+      const cleanPayerDoc = (payerDocument || customer?.document || customer?.cpf || '').replace(/\D/g, '');
+      const cleanSplitUser = typeof splitUser === 'string' ? splitUser.trim() : '';
+
+      if (!cleanPayerName) {
+        return res.status(400).json({ error: 'Nome do pagador (payerName) é obrigatório para gerar o PIX.' });
+      }
+
+      if (!cleanPayerDoc || cleanPayerDoc.length !== 11) {
+        return res.status(400).json({ 
+          error: 'Documento CPF do pagador (payerDocument) inválido. Deve conter exatamente 11 dígitos numéricos sem formatação.' 
         });
       }
 
-      const projectWebhook = `${baseUrl}/api/webhook/misticpay?token=${encodeURIComponent(webhookSecret)}`;
+      // Validação básica do email de split caso fornecido
+      if (cleanSplitUser && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanSplitUser)) {
+        return res.status(400).json({ error: 'O email para divisão (splitUser) fornecido é inválido.' });
+      }
 
-      // Chama a API da Mistic Pay com payload oficial usando SEMPRE o total calculado pelo backend
-      const payload = {
+      // Constrói payload oficial para a API Mistic Pay
+      const payload: Record<string, any> = {
         amount: calculatedTotal,
-        payerName: customer?.name || 'Cliente da Loja',
-        payerDocument: (customer?.document || '00000000000').replace(/\D/g, ''),
+        payerName: cleanPayerName,
+        payerDocument: cleanPayerDoc,
         transactionId: orderId,
-        description: `Pedido ${orderId.slice(-6).toUpperCase()}`,
-        projectWebhook
+        description: `Pedido ${orderId.slice(-6).toUpperCase()}`
       };
+
+      if (projectWebhook) {
+        payload.projectWebhook = projectWebhook;
+      }
+
+      if (cleanSplitUser) {
+        payload.splitUser = cleanSplitUser;
+        if (splitTax !== undefined && splitTax !== null && !isNaN(Number(splitTax))) {
+          payload.splitTax = Number(splitTax);
+        }
+      }
+
+      const clientId = (process.env.MISTIC_PAY_CLIENT_ID || '').trim();
+      const clientSecret = (process.env.MISTIC_PAY_CLIENT_SECRET || '').trim();
+      
+      let authHeader: string;
+      try {
+        authHeader = getMisticAuthHeader();
+      } catch (authErr: any) {
+        return res.status(500).json({ error: authErr.message || 'Configurações de autenticação Mistic Pay ausentes no servidor.' });
+      }
 
       const response = await fetch(`${MISTIC_API_URL}/transactions/create`, {
         method: 'POST',
         headers: {
-          'Authorization': getMisticAuthHeader(),
+          'Authorization': authHeader,
+          'ci': clientId,
+          'cs': clientSecret,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(payload)
@@ -243,18 +280,33 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
       
       if (!response.ok) {
         console.error('[MisticPay Checkout] Erro no gateway:', data);
-        return res.status(response.status).json({ error: 'Erro ao gerar PIX com a Mistic Pay', details: data });
+        return res.status(response.status).json({ 
+          error: data?.message || data?.error || 'Erro ao gerar PIX com a Mistic Pay', 
+          details: data 
+        });
       }
 
-      const misticTxId = data.data?.transactionId || null;
+      const misticData = data.data || {};
+      const misticTxId = misticData.transactionId || null;
 
-      // Salva pedido no Firestore com estado 'pending' e itens verificados
+      // Salva pedido no Firestore com estado 'pending', itens verificados e dados completos do pagador
       const newOrder = {
         id: orderId,
         storeId,
         customerId: customerId || '',
         customerUsername: customerUsername || '',
-        customer: customer || {},
+        customer: {
+          ...(customer || {}),
+          name: cleanPayerName,
+          document: cleanPayerDoc,
+          email: customer?.email || '',
+          phone: customer?.phone || ''
+        },
+        payer: {
+          name: cleanPayerName,
+          document: cleanPayerDoc
+        },
+        splitUser: cleanSplitUser || null,
         status: 'pending',
         items: verifiedItems,
         subtotal: calculatedTotal,
@@ -262,9 +314,16 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
         gateway: 'misticpay',
         misticTransactionId: misticTxId,
         paymentDetails: {
-          qrCodeBase64: data.data?.qrCodeBase64 || '',
-          copyPaste: data.data?.copyPaste || '',
-          qrcodeUrl: data.data?.qrcodeUrl || ''
+          qrCodeBase64: misticData.qrCodeBase64 || '',
+          qrcodeUrl: misticData.qrcodeUrl || '',
+          copyPaste: misticData.copyPaste || '',
+          payer: misticData.payer || {
+            name: cleanPayerName,
+            document: cleanPayerDoc
+          },
+          transactionFee: misticData.transactionFee,
+          transactionAmount: misticData.transactionAmount,
+          transactionState: misticData.transactionState || 'PENDENTE'
         },
         shippingAddress: shippingAddress || {},
         createdAt: FieldValue.serverTimestamp(),
@@ -287,9 +346,17 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
       res.json({
         success: true,
         orderId,
-        qrCodeBase64: data.data?.qrCodeBase64,
-        copyPaste: data.data?.copyPaste,
-        qrcodeUrl: data.data?.qrcodeUrl
+        transactionId: misticTxId,
+        qrCodeBase64: misticData.qrCodeBase64,
+        copyPaste: misticData.copyPaste,
+        qrcodeUrl: misticData.qrcodeUrl,
+        payer: misticData.payer || {
+          name: cleanPayerName,
+          document: cleanPayerDoc
+        },
+        transactionFee: misticData.transactionFee,
+        transactionAmount: misticData.transactionAmount,
+        transactionState: misticData.transactionState || 'PENDENTE'
       });
     } catch (err: any) {
       console.error('[MisticPay Checkout] Falha inesperada:', err);

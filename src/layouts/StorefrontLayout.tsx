@@ -39,13 +39,38 @@ export function StorefrontLayout() {
   const fetchStore = async () => {
     if (!storeSlug) return;
     setError(null);
+
+    // 1. Verifica cache local imediato
+    const cachedStore = FastCache.get<Store>(`store_${storeSlug}`);
+    if (cachedStore && !cachedStore.id.startsWith('demo_') && !cachedStore.id.startsWith('emergency_')) {
+      setStore(cachedStore);
+      setLoading(false);
+      return;
+    }
+
     try {
+      // 2. Prioridade 1: API do Servidor (Instantânea, ~30ms, imune a bloqueios de rede/ad-blockers)
+      try {
+        const res = await fetch(`/api/public/stores/${encodeURIComponent(storeSlug)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.store && data.store.id) {
+            setStore(data.store);
+            FastCache.set(`store_${storeSlug}`, data.store);
+            FastCache.set(`store_${data.store.id}`, data.store);
+            setLoading(false);
+            return;
+          }
+        }
+      } catch (apiErr) {
+        console.warn("[StorefrontLayout] API pública indisponível, tentando Firestore direto:", apiErr);
+      }
+
+      // 3. Prioridade 2: Firestore direto no cliente com timeout generoso (12s)
       const q = query(collection(db, 'stores'), where('slug', '==', storeSlug));
-      
-      // Limite de 4 segundos para evitar travamento em conexões lentas
       const querySnapshot = await withTimeout(
         getDocs(q),
-        4000,
+        12000,
         undefined,
         'O carregamento da loja excedeu o tempo limite.'
       );
@@ -55,8 +80,22 @@ export function StorefrontLayout() {
         const loadedStore = { id: storeDoc.id, ...storeDoc.data() } as Store;
         setStore(loadedStore);
         FastCache.set(`store_${storeSlug}`, loadedStore);
+        FastCache.set(`store_${loadedStore.id}`, loadedStore);
       } else {
-        // Fallback robusto: se a loja não foi encontrada no Firestore, cria um objeto demo baseado no slug para teste imediato
+        // Tenta buscar por ID caso storeSlug seja o próprio doc ID
+        try {
+          const directDoc = await getDocs(query(collection(db, 'stores'), where('__name__', '==', storeSlug)));
+          if (!directDoc.empty) {
+            const sDoc = directDoc.docs[0];
+            const loadedStore = { id: sDoc.id, ...sDoc.data() } as Store;
+            setStore(loadedStore);
+            FastCache.set(`store_${storeSlug}`, loadedStore);
+            setLoading(false);
+            return;
+          }
+        } catch (_) {}
+
+        // Fallback apenas se a loja realmente não existir em nenhum lugar
         const demoStore: Store = {
           id: `demo_${storeSlug}`,
           name: storeSlug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
@@ -65,7 +104,7 @@ export function StorefrontLayout() {
           createdAt: new Date().toISOString(),
           settings: {
             currency: 'BRL',
-            themeColor: '#4f46e5',
+            themeColor: '#007AFF',
             contactEmail: 'contato@' + storeSlug + '.com',
             supportPhone: ''
           }
@@ -75,22 +114,27 @@ export function StorefrontLayout() {
       }
     } catch (err: any) {
       console.warn("Aviso ao buscar loja, utilizando fallback:", err.message || err);
-      // Fallback de emergência para NUNCA travar a vitrine do usuário
-      const emergencyStore: Store = {
-        id: `emergency_${storeSlug}`,
-        name: storeSlug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-        slug: storeSlug,
-        ownerId: 'emergency_owner',
-        createdAt: new Date().toISOString(),
-        settings: {
-          currency: 'BRL',
-          themeColor: '#4f46e5',
-          contactEmail: 'suporte@loja.com',
-          supportPhone: ''
-        }
-      };
-      setStore(emergencyStore);
-      FastCache.set(`store_${storeSlug}`, emergencyStore);
+      // Se tiver em cache mesmo expirado, usa
+      const stale = FastCache.get<Store>(`store_${storeSlug}`);
+      if (stale) {
+        setStore(stale);
+      } else {
+        const emergencyStore: Store = {
+          id: `emergency_${storeSlug}`,
+          name: storeSlug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          slug: storeSlug,
+          ownerId: 'emergency_owner',
+          createdAt: new Date().toISOString(),
+          settings: {
+            currency: 'BRL',
+            themeColor: '#007AFF',
+            contactEmail: 'suporte@loja.com',
+            supportPhone: ''
+          }
+        };
+        setStore(emergencyStore);
+        FastCache.set(`store_${storeSlug}`, emergencyStore);
+      }
     } finally {
       setLoading(false);
     }

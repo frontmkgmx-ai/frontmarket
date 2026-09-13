@@ -37,11 +37,28 @@ export function Checkout() {
   const [copiedPix, setCopiedPix] = useState(false);
   const [pixCopyPaste, setPixCopyPaste] = useState("");
   const [pixQrCodeBase64, setPixQrCodeBase64] = useState("");
-
+  const [pixQrcodeUrl, setPixQrcodeUrl] = useState("");
+  const [confirmedPayer, setConfirmedPayer] = useState<{ name: string; document: string } | null>(null);
 
   const [orderPaid, setOrderPaid] = useState(false);
-
   const [checkingPayment, setCheckingPayment] = useState(false);
+
+  // Form State - Dados do Pagador PIX e Cliente
+  const [payerName, setPayerName] = useState('');
+  const [payerDocument, setPayerDocument] = useState('');
+  const [splitUser, setSplitUser] = useState('');
+  const [showSplitField, setShowSplitField] = useState(false);
+
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  
+  const [zipcode, setZipcode] = useState('');
+  const [street, setStreet] = useState('');
+  const [number, setNumber] = useState('');
+  const [complement, setComplement] = useState('');
+  const [neighborhood, setNeighborhood] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
 
   const handleManualCheck = async () => {
     if (!orderId || !store?.id) return;
@@ -57,7 +74,7 @@ export function Checkout() {
         if (data.status === 'paid' || data.status === 'processing' || data.status === 'shipped' || data.status === 'delivered') {
           setOrderPaid(true);
         } else {
-          alert('Pagamento ainda não confirmado. Verifique se o PIX foi concluído e tente novamente em alguns segundos.');
+          alert('Pagamento ainda não confirmado. Verifique se o PIX foi concluído no seu banco e tente novamente em instantes.');
         }
       }
     } catch (err) {
@@ -67,11 +84,9 @@ export function Checkout() {
       setCheckingPayment(false);
     }
   };
-
-
   
   const [orderCancelled, setOrderCancelled] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(9 * 60); // 9 minutes in seconds
+  const [timeLeft, setTimeLeft] = useState(10 * 60); // 10 minutes in seconds
 
   // Timer countdown
   useEffect(() => {
@@ -82,7 +97,6 @@ export function Checkout() {
       return () => clearInterval(timer);
     } else if (timeLeft === 0 && !orderPaid) {
       setOrderCancelled(true);
-      // Optional: call API to cancel order on backend, or let webhook handle it
       fetch('/api/checkout/misticpay/cancel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -91,7 +105,7 @@ export function Checkout() {
     }
   }, [success, orderPaid, orderCancelled, timeLeft, store?.id, orderId]);
 
-  // Poll for payment status
+  // Polling ágil para confirmação automática em tempo real do PIX Mistic Pay (a cada 4 segundos)
   useEffect(() => {
     if (success && orderId && !orderPaid && !orderCancelled) {
       const interval = setInterval(async () => {
@@ -109,28 +123,12 @@ export function Checkout() {
             }
           }
         } catch (err) {
-          console.error("Erro ao verificar status:", err);
+          console.error("Erro ao verificar status automático:", err);
         }
-      }, 60000); // Check every 1 minute
+      }, 4000); // Consulta a cada 4 segundos para resposta imediata ao cliente
       return () => clearInterval(interval);
     }
   }, [success, orderId, orderPaid, orderCancelled, store?.id]);
-
-
-
-  // Form State
-  const [customerName, setCustomerName] = useState('');
-  const [customerEmail, setCustomerEmail] = useState('');
-  const [customerDoc, setCustomerDoc] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
-  
-  const [zipcode, setZipcode] = useState('');
-  const [street, setStreet] = useState('');
-  const [number, setNumber] = useState('');
-  const [complement, setComplement] = useState('');
-  const [neighborhood, setNeighborhood] = useState('');
-  const [city, setCity] = useState('');
-  const [state, setState] = useState('');
 
   useEffect(() => {
     if (store?.id) {
@@ -141,44 +139,72 @@ export function Checkout() {
   // Preenchimento automático quando o cliente da loja está logado
   useEffect(() => {
     if (customer && customer.storeId === store.id) {
-      setCustomerName(customer.name || '');
-      setCustomerEmail(customer.email || '');
-      setCustomerDoc(customer.cpf || '');
-      setCustomerPhone(customer.phone || '');
+      if (!payerName) setPayerName(customer.name || '');
+      if (!payerDocument) setPayerDocument(customer.cpf ? maskCPF(customer.cpf) : '');
+      if (!customerEmail) setCustomerEmail(customer.email || '');
+      if (!customerPhone) setCustomerPhone(customer.phone ? maskPhone(customer.phone) : '');
 
       if (customer.address) {
-        setZipcode(customer.address.zipcode || '');
-        setStreet(customer.address.street || '');
-        setNumber(customer.address.number || '');
-        setComplement(customer.address.complement || '');
-        setNeighborhood(customer.address.neighborhood || '');
-        setCity(customer.address.city || '');
-        setState(customer.address.state || '');
+        if (!zipcode) setZipcode(customer.address.zipcode || '');
+        if (!street) setStreet(customer.address.street || '');
+        if (!number) setNumber(customer.address.number || '');
+        if (!complement) setComplement(customer.address.complement || '');
+        if (!neighborhood) setNeighborhood(customer.address.neighborhood || '');
+        if (!city) setCity(customer.address.city || '');
+        if (!state) setState(customer.address.state || '');
       }
     }
-  }, [customer, store.id]);
+  }, [customer, store?.id]);
 
   const total = getTotal();
   const isDigitalOnly = items.length > 0 && items.every(item => item.isDigital);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (items.length === 0 || !store || !customer) return;
+    if (items.length === 0 || !store) return;
+
+    const cleanPayerName = payerName.trim();
+    const cleanPayerDoc = payerDocument.replace(/\D/g, '');
+    const cleanSplitUser = splitUser.trim();
+
+    if (!cleanPayerName || cleanPayerName.length < 3) {
+      alert('Por favor, informe o Nome Completo do pagador (payerName).');
+      return;
+    }
+
+    if (cleanPayerDoc.length !== 11) {
+      alert('Por favor, informe um CPF válido com 11 dígitos para o pagador (payerDocument).');
+      return;
+    }
+
+    if (cleanSplitUser && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanSplitUser)) {
+      alert('Por favor, informe um e-mail válido para a divisão de split (splitUser) ou deixe o campo vazio.');
+      return;
+    }
+
+    if (!customerEmail || !customerEmail.includes('@')) {
+      alert('Por favor, informe um e-mail de contato válido para envio do pedido.');
+      return;
+    }
+
     setLoading(true);
 
     try {
       const orderPayload = {
         storeId: store.id,
-        customerId: customer.id,
-        customerUsername: customer.username,
+        customerId: customer?.id || '',
+        customerUsername: customer?.username || '',
+        payerName: cleanPayerName,
+        payerDocument: cleanPayerDoc,
+        splitUser: cleanSplitUser || undefined,
         items,
         subtotal: total,
         total,
         customer: {
-          name: customerName || customer.name,
-          email: customerEmail || customer.email || '',
-          document: customerDoc || customer.cpf,
-          phone: customerPhone || customer.phone
+          name: cleanPayerName,
+          email: customerEmail.trim(),
+          document: cleanPayerDoc,
+          phone: customerPhone.trim()
         },
         shippingAddress: isDigitalOnly ? null : {
           zipcode,
@@ -200,12 +226,14 @@ export function Checkout() {
       const data = await res.json();
       
       if (!res.ok) {
-        throw new Error(data.error || 'Falha ao processar pagamento.');
+        throw new Error(data.error || 'Falha ao processar pagamento via Mistic Pay.');
       }
 
       setOrderId(data.orderId);
       if (data.copyPaste) setPixCopyPaste(data.copyPaste);
       if (data.qrCodeBase64) setPixQrCodeBase64(data.qrCodeBase64);
+      if (data.qrcodeUrl) setPixQrcodeUrl(data.qrcodeUrl);
+      if (data.payer) setConfirmedPayer(data.payer);
       
       clearCart();
       setSuccess(true);
@@ -217,66 +245,25 @@ export function Checkout() {
     }
   };
 
-  // Se o cliente não estiver logado nesta loja, convida para fazer login com usuário/senha ou cadastrar
-  if (!customer || customer.storeId !== store.id) {
-    return (
-      <div className="max-w-xl mx-auto py-12 px-4 text-center">
-        <div className="bg-white p-6 sm:p-10 rounded-3xl border border-slate-200/80 shadow-xl shadow-slate-200/40 space-y-6">
-          <div 
-            className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center text-white shadow-md"
-            style={{ backgroundColor: themeColor }}
-          >
-            <Lock className="w-8 h-8" />
-          </div>
-
-          <div className="space-y-2">
-            <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-              Identificação do Cliente
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
-              Para finalizar seu pedido com total segurança na <strong className="text-slate-800 font-bold">{store.name}</strong>, faça login com seu usuário ou crie sua conta em 1 minuto.
-            </p>
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-            <Link
-              to={`/${store.slug}/login`}
-              state={{ from: `/${store.slug}/checkout` }}
-              className="w-full sm:w-auto flex-1 inline-flex items-center justify-center py-3.5 px-6 rounded-xl text-xs sm:text-sm font-bold text-white shadow-md hover:opacity-95 transition-opacity"
-              style={{ backgroundColor: themeColor }}
-            >
-              Já tenho Conta (Entrar)
-            </Link>
-            <Link
-              to={`/${store.slug}/register`}
-              className="w-full sm:w-auto flex-1 inline-flex items-center justify-center py-3.5 px-6 border border-slate-200 text-xs sm:text-sm font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors"
-            >
-              Criar Nova Conta
-            </Link>
-          </div>
-
-          <div className="pt-4 border-t border-slate-100 flex items-center justify-center gap-2 text-xs text-slate-500">
-            <ShieldCheck className="w-4 h-4 text-emerald-600" />
-            <span>Seus dados são protegidos e exclusivos desta loja</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // Pedido Realizado com Sucesso
   if (success) {
+    const displayPayerName = confirmedPayer?.name || payerName;
+    const displayPayerDoc = confirmedPayer?.document || payerDocument.replace(/\D/g, '');
+
     return (
-      <div className="max-w-2xl mx-auto py-10 px-4 text-center">
+      <div className="max-w-2xl mx-auto py-8 sm:py-12 px-4 text-center">
         <div className="bg-white p-6 sm:p-10 rounded-3xl border border-slate-200/80 shadow-2xl space-y-6">
           <div className="mx-auto w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center">
             <CheckCircle className="w-10 h-10 text-emerald-600" />
           </div>
 
           <div className="space-y-2">
-            <h2 className="text-2xl sm:text-3xl font-black text-slate-900">{orderPaid ? 'Pagamento Aprovado! 🎉' : 'Pedido Confirmado!'}</h2>
+            <h2 className="text-2xl sm:text-3xl font-black text-slate-900">
+              {orderPaid ? 'Pagamento Aprovado! 🎉' : 'Pedido Confirmado!'}
+            </h2>
             <p className="text-xs sm:text-sm text-slate-600">
-              {orderPaid ? 'Seu pagamento foi confirmado com sucesso, ' : 'Obrigado pela sua compra, '}<strong className="text-slate-800">{customerName || customer.name}</strong>!
+              {orderPaid ? 'Seu pagamento foi confirmado com sucesso, ' : 'Obrigado pela sua compra, '}
+              <strong className="text-slate-800">{displayPayerName}</strong>!
             </p>
             <div className="inline-block bg-slate-100 text-slate-800 font-mono text-xs sm:text-sm font-bold px-3 py-1.5 rounded-lg mt-2">
               Pedido #{orderId.slice(-6).toUpperCase()}
@@ -292,39 +279,55 @@ export function Checkout() {
                 </span>
               </div>
               <p className="text-sm text-rose-900/80 leading-relaxed">
-                O tempo para pagamento via PIX expirou e o pedido foi cancelado. Por favor, faça um novo pedido.
+                O tempo para pagamento via PIX expirou e o pedido foi cancelado. Por favor, gere um novo pedido.
               </p>
             </div>
           )}
 
-          {/* Instruções PIX */}
+          {/* Instruções PIX Mistic Pay */}
           {!orderPaid && !orderCancelled && (
-
-            <div className="bg-emerald-50/70 border border-emerald-200/80 p-4 sm:p-6 rounded-2xl text-left space-y-3">
-              
+            <div className="bg-emerald-50/70 border border-emerald-200/80 p-4 sm:p-6 rounded-2xl text-left space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1.5">
                   <QrCode className="w-4 h-4 text-emerald-700" />
-                  Pagamento via PIX Instantâneo
+                  PIX Instantâneo • Mistic Pay
                 </span>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-1 rounded-md">
+                  <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-md">
                     Expira em {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
                   </span>
                   <span className="text-xs font-bold text-emerald-700">{formatCurrency(total)}</span>
                 </div>
               </div>
 
+              {/* Informações do Pagador Vinculadas ao PIX */}
+              <div className="bg-white/80 border border-emerald-200 rounded-xl p-3 text-xs space-y-1">
+                <div className="text-[11px] font-bold text-emerald-800 uppercase tracking-wide">
+                  Dados do Pagador Registrado na Mistic Pay:
+                </div>
+                <div className="flex flex-col sm:flex-row sm:justify-between text-slate-700 font-medium">
+                  <span><strong>Titular:</strong> {displayPayerName}</span>
+                  <span><strong>CPF:</strong> {maskCPF(displayPayerDoc)}</span>
+                </div>
+                <p className="text-[11px] text-emerald-700 pt-1 leading-snug">
+                  ⚠️ Pague através do aplicativo bancário vinculado ao mesmo CPF acima para validação e liberação automática imediata.
+                </p>
+              </div>
 
-              {pixQrCodeBase64 && (
+              {(pixQrCodeBase64 || pixQrcodeUrl) && (
                 <div className="flex justify-center py-2">
-                  <img src={pixQrCodeBase64} alt="QR Code PIX" className="w-40 h-40 sm:w-48 sm:h-48 rounded-lg shadow-sm" />
+                  <img 
+                    src={pixQrCodeBase64 || pixQrcodeUrl} 
+                    alt="QR Code PIX Mistic Pay" 
+                    className="w-44 h-44 sm:w-52 sm:h-52 rounded-xl shadow-sm border border-emerald-200 bg-white p-2" 
+                  />
                 </div>
               )}
 
-              <p className="text-xs text-emerald-900/80 leading-relaxed">
-                Copie o código PIX abaixo e pague pelo app do seu banco para confirmação imediata do pedido:
+              <p className="text-xs text-emerald-900/90 leading-relaxed font-medium">
+                Copie o código PIX abaixo e pague na opção <strong>PIX Copia e Cola</strong> do seu banco:
               </p>
+
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -345,24 +348,36 @@ export function Checkout() {
                 </button>
               </div>
 
-              <div className="pt-3">
+              <div className="pt-2">
                 <button
                   onClick={handleManualCheck}
                   disabled={checkingPayment}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-xl text-sm font-bold transition-colors disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold transition-all shadow-sm cursor-pointer disabled:opacity-50"
                 >
                   {checkingPayment ? (
                     <RefreshCw className="w-4 h-4 animate-spin" />
                   ) : (
                     <CheckCircle className="w-4 h-4" />
                   )}
-                  {checkingPayment ? 'Verificando pagamento...' : 'Já paguei (Verificar agora)'}
+                  {checkingPayment ? 'Verificando no gateway...' : 'Já realizei o pagamento (Verificar agora)'}
                 </button>
+                <div className="flex items-center justify-center gap-1.5 text-[11px] text-emerald-700 mt-2">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  Verificação automática ativa em tempo real...
+                </div>
               </div>
             </div>
           )}
 
-
+          {orderPaid && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-emerald-800 text-xs font-medium space-y-1">
+              <p className="text-sm font-bold">🎉 Pagamento Confirmado com Sucesso!</p>
+              <p>Os detalhes e acessos do seu pedido foram enviados para o e-mail informado.</p>
+            </div>
+          )}
 
           <div className="pt-2">
             <Link
@@ -370,7 +385,7 @@ export function Checkout() {
               className="inline-flex items-center justify-center px-6 py-3 rounded-xl text-xs sm:text-sm font-bold text-white shadow-md hover:opacity-90 transition-opacity"
               style={{ backgroundColor: themeColor }}
             >
-              Voltar à Loja
+              Voltar à Vitrine da Loja
             </Link>
           </div>
         </div>
@@ -382,6 +397,8 @@ export function Checkout() {
     navigate(`/${store.slug}/cart`);
     return null;
   }
+
+  const isCustomerLoggedIn = !!(customer && customer.storeId === store.id);
 
   return (
     <div className="max-w-7xl mx-auto py-4 sm:py-8 px-2 sm:px-6 lg:px-8">
@@ -399,71 +416,150 @@ export function Checkout() {
         <div className="lg:col-span-7">
           <form id="checkout-form" onSubmit={handleSubmit} className="space-y-6 bg-white p-4 sm:p-6 rounded-3xl border border-slate-200/80 shadow-sm">
             
-            {/* Identificação do Cliente Logado */}
-            <div className="bg-slate-50 p-3.5 sm:p-4 rounded-2xl border border-slate-200 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm" style={{ backgroundColor: themeColor }}>
-                  {customer.name.charAt(0).toUpperCase()}
+            {/* Identificação do Cliente */}
+            {isCustomerLoggedIn ? (
+              <div className="bg-slate-50 p-3.5 sm:p-4 rounded-2xl border border-slate-200 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm" style={{ backgroundColor: themeColor }}>
+                    {customer.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-slate-900">{customer.name}</div>
+                    <div className="text-[11px] text-slate-500 font-mono">@{customer.username} • CPF: {customer.cpf}</div>
+                  </div>
+                </div>
+                <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  Cliente Autenticado
+                </span>
+              </div>
+            ) : (
+              <div className="bg-indigo-50/70 p-3.5 sm:p-4 rounded-2xl border border-indigo-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+                <div className="text-xs text-indigo-900">
+                  <span className="font-bold">Já possui cadastro na loja?</span> Faça login para preencher seus dados automaticamente.
+                </div>
+                <Link
+                  to={`/${store.slug}/login`}
+                  state={{ from: `/${store.slug}/checkout` }}
+                  className="text-xs font-bold text-indigo-700 hover:text-indigo-900 bg-white border border-indigo-200 px-3 py-1.5 rounded-xl shadow-xs transition-colors shrink-0"
+                >
+                  Fazer Login
+                </Link>
+              </div>
+            )}
+
+            {/* DADOS DO PAGADOR PIX (MISTIC PAY API) */}
+            <div className="space-y-4">
+              <div className="border-b border-slate-100 pb-2">
+                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                  <QrCode className="w-4 h-4 text-emerald-600" />
+                  Dados do Pagador (PIX Mistic Pay)
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Estes dados serão registrados na transação PIX para garantir a validação com a sua conta bancária.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Nome do Pagador * <span className="font-normal text-slate-400 font-mono text-[10px]">(payerName)</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    required 
+                    placeholder="Nome completo do titular da conta"
+                    value={payerName} 
+                    onChange={e => setPayerName(e.target.value)} 
+                    className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none" 
+                  />
+                  <span className="text-[10px] text-slate-400 mt-1 block">Titular da conta bancária que irá pagar</span>
                 </div>
                 <div>
-                  <div className="text-xs font-bold text-slate-900">{customer.name}</div>
-                  <div className="text-[11px] text-slate-500 font-mono">@{customer.username} • CPF: {customer.cpf}</div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    CPF do Pagador * <span className="font-normal text-slate-400 font-mono text-[10px]">(payerDocument)</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    required 
+                    placeholder="000.000.000-00"
+                    value={payerDocument} 
+                    onChange={e => setPayerDocument(maskCPF(e.target.value))} 
+                    className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono" 
+                  />
+                  <span className="text-[10px] text-slate-400 mt-1 block">Sem formatação ao gerar PIX (11 dígitos)</span>
                 </div>
               </div>
-              <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                Cliente Autenticado
-              </span>
+
+              {/* Campo Opcional: splitUser */}
+              <div className="pt-1">
+                {!showSplitField ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowSplitField(true)}
+                    className="text-[11px] text-slate-500 hover:text-indigo-600 font-medium underline underline-offset-2 transition-colors cursor-pointer"
+                  >
+                    + Informar e-mail para divisão de split (splitUser - opcional)
+                  </button>
+                ) : (
+                  <div className="bg-slate-50/80 p-3 rounded-2xl border border-slate-200 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-slate-700">
+                        Email para Divisão de Split <span className="font-normal text-slate-400 font-mono text-[10px]">(splitUser - opcional)</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => { setShowSplitField(false); setSplitUser(''); }}
+                        className="text-[10px] text-slate-400 hover:text-rose-500"
+                      >
+                        Remover
+                      </button>
+                    </div>
+                    <input 
+                      type="email" 
+                      placeholder="usuario@plataforma.com"
+                      value={splitUser} 
+                      onChange={e => setSplitUser(e.target.value)} 
+                      className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono" 
+                    />
+                    <span className="text-[10px] text-slate-500 block">
+                      Email do usuário cadastrado na Mistic Pay que receberá a divisão da transação.
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Dados de Contato para o Pedido */}
-            <div className="space-y-3">
+            <div className="space-y-3 pt-3 border-t border-slate-100">
               <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
                 <User className="w-4 h-4 text-slate-500" />
-                Dados do Comprador
+                Contato para Envio e Acesso
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Nome Completo *</label>
-                  <input 
-                    type="text" 
-                    required 
-                    value={customerName} 
-                    onChange={e => setCustomerName(e.target.value)} 
-                    className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none" 
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Telefone / WhatsApp *</label>
-                  <input 
-                    type="text" 
-                    required 
-                    value={customerPhone} 
-                    onChange={e => setCustomerPhone(maskPhone(e.target.value))} 
-                    className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono" 
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">E-mail *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">E-mail para Receber o Pedido *</label>
                   <input 
                     type="email" 
                     required 
+                    placeholder="seuemail@exemplo.com"
                     value={customerEmail} 
                     onChange={e => setCustomerEmail(e.target.value)} 
                     className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none" 
                   />
+                  <span className="text-[10px] text-slate-400 mt-1 block">Onde você receberá os detalhes e acessos</span>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">CPF *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">WhatsApp / Telefone *</label>
                   <input 
                     type="text" 
                     required 
-                    value={customerDoc} 
-                    onChange={e => setCustomerDoc(maskCPF(e.target.value))} 
+                    placeholder="(00) 00000-0000"
+                    value={customerPhone} 
+                    onChange={e => setCustomerPhone(maskPhone(e.target.value))} 
                     className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono" 
                   />
+                  <span className="text-[10px] text-slate-400 mt-1 block">Para atualizações sobre a entrega</span>
                 </div>
               </div>
             </div>

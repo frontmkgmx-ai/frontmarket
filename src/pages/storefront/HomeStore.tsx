@@ -48,21 +48,66 @@ export function HomeStore() {
   const loadStoreData = async () => {
     if (!store) return;
     try {
-      // 1. Carrega Produtos Ativos
+      // 1. Tenta API do servidor primeiro (rápida, resiliente em mobile, sem dependência de handshake Firestore)
+      let loadedFromApi = false;
+      try {
+        const res = await fetch(`/api/public/stores/${encodeURIComponent(store.slug || store.id)}/products`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.products)) {
+            const items = data.products as Product[];
+            items.sort((a, b) => {
+              const dateA = (a.createdAt as any)?._seconds ? (a.createdAt as any)._seconds * 1000 : (a.createdAt ? new Date(a.createdAt as any).getTime() : 0);
+              const dateB = (b.createdAt as any)?._seconds ? (b.createdAt as any)._seconds * 1000 : (b.createdAt ? new Date(b.createdAt as any).getTime() : 0);
+              return dateB - dateA;
+            });
+
+            setProducts(items);
+            FastCache.set(`products_${store.id}`, items);
+            FastCache.set(`products_${store.slug}`, items);
+
+            // Popula cache individual de cada produto para abertura instantânea (0ms) na vitrine
+            items.forEach(item => {
+              FastCache.set(`prod_${store.id}_${item.id}`, item);
+              if (item.slug) {
+                FastCache.set(`prod_${store.id}_${item.slug}`, item);
+                FastCache.set(`prod_${store.slug}_${item.slug}`, item);
+              }
+            });
+
+            if (Array.isArray(data.categories)) {
+              const cats = data.categories as Category[];
+              cats.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+              setCategories(cats);
+              FastCache.set(`categories_${store.id}`, cats);
+            }
+
+            loadedFromApi = true;
+          }
+        }
+      } catch (apiErr) {
+        console.warn("[HomeStore] API pública offline, usando Firestore direto:", apiErr);
+      }
+
+      if (loadedFromApi) {
+        setLoading(false);
+        return;
+      }
+
+      // 2. Fallback: Consulta Firestore no cliente com timeout generoso (10s)
       const qProducts = query(
         collection(db, 'stores', store.id, 'products'),
         where('active', '==', true)
       );
 
-      // 2. Carrega Categorias Ativas
       const qCategories = query(
         collection(db, 'stores', store.id, 'categories'),
         where('active', '==', true)
       );
 
       const [productsSnap, categoriesSnap] = await Promise.all([
-        withTimeout(getDocs(qProducts), 3500, undefined, 'Busca de produtos demorou além do esperado.'),
-        withTimeout(getDocs(qCategories), 3500, undefined, 'Busca de categorias demorou além do esperado.')
+        withTimeout(getDocs(qProducts), 10000, undefined, 'Busca de produtos demorou além do esperado.'),
+        withTimeout(getDocs(qCategories), 10000, undefined, 'Busca de categorias demorou além do esperado.')
       ]);
 
       if (productsSnap) {
@@ -77,6 +122,16 @@ export function HomeStore() {
 
         setProducts(items);
         FastCache.set(`products_${store.id}`, items);
+        FastCache.set(`products_${store.slug}`, items);
+
+        // Popula cache individual de cada produto
+        items.forEach(item => {
+          FastCache.set(`prod_${store.id}_${item.id}`, item);
+          if (item.slug) {
+            FastCache.set(`prod_${store.id}_${item.slug}`, item);
+            FastCache.set(`prod_${store.slug}_${item.slug}`, item);
+          }
+        });
       }
 
       if (categoriesSnap) {
@@ -337,7 +392,7 @@ export function HomeStore() {
             return (
               <Link 
                 key={product.id} 
-                to={`/${store.slug}/p/${product.slug}`} 
+                to={`/${store.slug}/p/${encodeURIComponent(product.slug || product.id)}`} 
                 className="group flex flex-col bg-white rounded-2xl border border-black/[0.06] overflow-hidden shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 transition-all duration-200"
               >
                 {/* Product Thumbnail (16:9) */}
