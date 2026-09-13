@@ -58,7 +58,8 @@ export async function triggerOrderStatusEmail(storeId: string, orderId: string, 
     // 1. Enviar Email de Status
     const subject = replaceVars(statusConfig.subject);
     const body = replaceVars(statusConfig.body);
-    const htmlBody = `<div style="font-family: sans-serif; white-space: pre-wrap; color: #333; line-height: 1.5;">${body}</div>`;
+    const { generateEmailHtml } = await import('./server-email-template.js');
+    const htmlBody = generateEmailHtml(body, (settings as any).templateConfig, storeName);
 
     const deliveryId1 = eventId ? `${eventId}_status` : db.collection('email_deliveries').doc().id;
     const deliveryRef1 = db.collection('email_deliveries').doc(deliveryId1);
@@ -110,7 +111,8 @@ export async function triggerOrderStatusEmail(storeId: string, orderId: string, 
         for (const rule of prodEmailRules) {
           const prodSubject = replaceVars(rule.subject).replace(/\{\{product_name\}\}/g, escapeHtml(item.name || 'Produto'));
           const prodBody = replaceVars(rule.body).replace(/\{\{product_name\}\}/g, escapeHtml(item.name || 'Produto'));
-          const prodHtml = `<div style="font-family: sans-serif; white-space: pre-wrap; color: #333; line-height: 1.5;">${prodBody}</div>`;
+          const { generateEmailHtml } = await import('./server-email-template.js');
+          const prodHtml = generateEmailHtml(prodBody, (settings as any).templateConfig, storeName);
           
           const deliveryId2 = eventId ? `${eventId}_prod_${prodId}` : db.collection('email_deliveries').doc().id;
           const deliveryRef2 = db.collection('email_deliveries').doc(deliveryId2);

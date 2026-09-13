@@ -225,7 +225,8 @@ async function startServer() {
       if (statusConfig && statusConfig.enabled) {
         const subject = replaceVars(statusConfig.subject);
         const body = replaceVars(statusConfig.body);
-        const htmlBody = `<div style="font-family: sans-serif; white-space: pre-wrap; color: #333; line-height: 1.5;">${body}</div>`;
+        const { generateEmailHtml } = await import('./server-email-template.js');
+        const htmlBody = generateEmailHtml(body, settings.templateConfig, storeName);
         
         const deliveryId = db.collection('email_deliveries').doc().id;
         const deliveryRef = db.collection('email_deliveries').doc(deliveryId);
@@ -272,7 +273,8 @@ async function startServer() {
           for (const rule of prodEmailRules) {
             const prodSubject = replaceVars(rule.subject).replace(/{\{product_name\}\}/g, escapeHtml(item.name || 'Produto'));
             const prodBody = replaceVars(rule.body).replace(/{\{product_name\}\}/g, escapeHtml(item.name || 'Produto'));
-            const prodHtml = `<div style="font-family: sans-serif; white-space: pre-wrap; color: #333; line-height: 1.5;">${prodBody}</div>`;
+            const { generateEmailHtml } = await import('./server-email-template.js');
+            const prodHtml = generateEmailHtml(prodBody, settings.templateConfig, storeName);
             
             const deliveryId = db.collection('email_deliveries').doc().id;
             const deliveryRef = db.collection('email_deliveries').doc(deliveryId);
@@ -379,7 +381,13 @@ async function startServer() {
 
       const subject = replaceVars(rawSubject);
       const body = replaceVars(rawBody);
-      const htmlBody = `<div style="font-family: sans-serif; white-space: pre-wrap; color: #333; line-height: 1.5;">${body}</div>`;
+      const settingsSnap = await db.collection('stores').doc(storeId).collection('settings').doc('emails').get();
+      const settings = settingsSnap.exists ? settingsSnap.data() : null;
+      const storeSnap = await db.collection('stores').doc(storeId).get();
+      const storeName = storeSnap.exists ? (storeSnap.data().name || 'Loja') : 'Loja';
+      
+      const { generateEmailHtml } = await import('./server-email-template.js');
+      const htmlBody = generateEmailHtml(body, settings?.templateConfig, storeName);
 
       const { FieldValue } = await import('firebase-admin/firestore');
       const deliveryId = db.collection('email_deliveries').doc().id;
