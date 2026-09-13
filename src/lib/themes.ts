@@ -16,17 +16,31 @@ export interface ThemeConfig {
 export const STORE_THEMES: ThemeConfig[] = [
   {
     id: 'default',
-    name: 'Padrão',
+    name: 'iOS Clean (Padrão)',
     colors: {
-      background: 'bg-slate-50',
-      text: 'text-slate-900',
-      primary: 'bg-indigo-600',
-      secondary: 'bg-indigo-100',
+      background: 'bg-[#F2F2F7]',
+      text: 'text-[#1C1C1E]',
+      primary: 'bg-[#007AFF]',
+      secondary: 'bg-[#007AFF]/10',
       surface: 'bg-white',
-      border: 'border-slate-200'
+      border: 'border-black/[0.08]'
     },
     fontFamily: 'font-sans',
-    borderRadius: 'rounded-xl'
+    borderRadius: 'rounded-2xl'
+  },
+  {
+    id: 'ios',
+    name: 'Apple iOS',
+    colors: {
+      background: 'bg-[#F2F2F7]',
+      text: 'text-[#1C1C1E]',
+      primary: 'bg-[#007AFF]',
+      secondary: 'bg-[#007AFF]/10',
+      surface: 'bg-white',
+      border: 'border-black/[0.08]'
+    },
+    fontFamily: 'font-sans',
+    borderRadius: 'rounded-2xl'
   },
   {
     id: 'dark',

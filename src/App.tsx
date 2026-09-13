@@ -31,6 +31,7 @@ import { Checkout } from './pages/storefront/Checkout';
 import { CustomerLogin } from './pages/storefront/CustomerLogin';
 import { CustomerRegister } from './pages/storefront/CustomerRegister';
 import { CustomerOrders } from './pages/storefront/CustomerOrders';
+import { CustomerProfile } from './pages/storefront/CustomerProfile';
 
 export default function App() {
   const { initialize } = useAuthStore();
@@ -88,6 +89,7 @@ export default function App() {
             <Route path="login" element={<CustomerLogin />} />
             <Route path="register" element={<CustomerRegister />} />
             <Route path="orders" element={<CustomerOrders />} />
+            <Route path="profile" element={<CustomerProfile />} />
           </Route>
 
           {/* Fallback */}

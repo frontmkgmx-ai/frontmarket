@@ -303,4 +303,75 @@ export function setupCustomerAuthRoutes(app: express.Express, getDb: any) {
       return res.json({ available: true });
     }
   });
+
+  /**
+   * PUT /api/stores/:storeId/customers/:customerId/profile
+   * Atualização do perfil do cliente (Avatar/GIF, Email, Endereço, Chave Pix, etc)
+   */
+  app.put('/api/stores/:storeId/customers/:customerId/profile', async (req: express.Request, res: express.Response) => {
+    try {
+      const { storeId, customerId } = req.params;
+      const { name, email, phone, avatarUrl, pixKey, pixKeyType, address } = req.body;
+
+      if (!storeId || !customerId) {
+        return res.status(400).json({ success: false, error: 'Parâmetros inválidos.' });
+      }
+
+      const db = getDb();
+      const customerRef = db.collection('stores').doc(storeId).collection('customers').doc(customerId);
+      const customerDoc = await customerRef.get();
+
+      if (!customerDoc.exists) {
+        return res.status(404).json({ success: false, error: 'Cliente não encontrado.' });
+      }
+
+      const updateData: any = {
+        updatedAt: new Date().toISOString()
+      };
+
+      if (typeof name === 'string' && name.trim()) {
+        updateData.name = name.trim();
+      }
+      if (typeof email === 'string') {
+        updateData.email = email.trim();
+      }
+      if (typeof phone === 'string') {
+        updateData.phone = phone.trim();
+      }
+      if (typeof avatarUrl === 'string') {
+        updateData.avatarUrl = avatarUrl.trim();
+      }
+      if (typeof pixKey === 'string') {
+        updateData.pixKey = pixKey.trim();
+      }
+      if (typeof pixKeyType === 'string') {
+        updateData.pixKeyType = pixKeyType.trim();
+      }
+      if (address && typeof address === 'object') {
+        updateData.address = {
+          zipcode: (address.zipcode || '').trim(),
+          street: (address.street || '').trim(),
+          number: (address.number || '').trim(),
+          complement: (address.complement || '').trim(),
+          neighborhood: (address.neighborhood || '').trim(),
+          city: (address.city || '').trim(),
+          state: (address.state || '').trim()
+        };
+      }
+
+      await customerRef.update(updateData);
+
+      const refreshedDoc = await customerRef.get();
+      const safeCustomer = sanitizeCustomer({ id: refreshedDoc.id, ...refreshedDoc.data() });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Perfil atualizado com sucesso.',
+        customer: safeCustomer
+      });
+    } catch (err: any) {
+      console.error('[Customer Auth Profile Update] Erro:', err.message);
+      return res.status(500).json({ success: false, error: 'Erro ao atualizar dados do perfil.' });
+    }
+  });
 }

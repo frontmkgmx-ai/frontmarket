@@ -17,7 +17,7 @@ export function generateEmailHtml(body: string, templateConfig: any, footerVars:
 <body style="margin: 0; padding: 0; background-color: ${bgColor}; font-family: sans-serif;">
   <div style="background-color: ${bgColor}; padding: 40px 20px;">
     <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 32px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-      ${logoUrl ? `<div style="text-align: center; margin-bottom: 24px;"><img src="${logoUrl}" alt="Logo" style="max-height: 48px;" /></div>` : ''}
+      ${logoUrl ? `<div style="text-align: center; margin-bottom: 24px;"><img src="${logoUrl}" alt="Logo" style="max-height: 48px; max-width: 200px; object-fit: contain; display: inline-block;" onerror="this.style.display='none'" /></div>` : ''}
       <div style="white-space: pre-wrap; color: #333333; line-height: 1.6; font-size: 15px;">${body}</div>
       <div style="text-align: center; margin-top: 32px; font-size: 12px; color: #888888; border-top: 1px solid #eeeeee; padding-top: 16px;">
         ${footer}

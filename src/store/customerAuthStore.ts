@@ -20,6 +20,7 @@ interface CustomerAuthState {
   registerCustomer: (storeId: string, data: RegisterCustomerData) => Promise<{ success: boolean; error?: string }>;
   logoutCustomer: (storeId: string) => void;
   checkUsernameAvailability: (storeId: string, username: string) => Promise<boolean>;
+  updateCustomerProfile: (storeId: string, customerId: string, updates: Partial<Customer>) => Promise<{ success: boolean; error?: string; customer?: Customer }>;
 }
 
 export const useCustomerAuthStore = create<CustomerAuthState>((set, get) => ({
@@ -163,6 +164,39 @@ export const useCustomerAuthStore = create<CustomerAuthState>((set, get) => ({
       try {
         localStorage.removeItem(`fmk_customer_${storeId}`);
       } catch {}
+    }
+  },
+
+  updateCustomerProfile: async (storeId: string, customerId: string, updates: Partial<Customer>) => {
+    if (!storeId || !customerId) {
+      return { success: false, error: 'Parâmetros inválidos.' };
+    }
+    set({ loading: true, error: null });
+    try {
+      const res = await fetch(`/api/stores/${encodeURIComponent(storeId)}/customers/${encodeURIComponent(customerId)}/profile`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      });
+      const resData = await res.json();
+      if (!res.ok || !resData.success) {
+        const errMsg = resData.error || 'Falha ao atualizar dados.';
+        set({ loading: false, error: errMsg });
+        return { success: false, error: errMsg };
+      }
+
+      const updatedCustomer: Customer = resData.customer;
+      set({ customer: updatedCustomer, loading: false, error: null });
+      try {
+        localStorage.setItem(`fmk_customer_${storeId}`, JSON.stringify(updatedCustomer));
+      } catch {}
+
+      return { success: true, customer: updatedCustomer };
+    } catch (err: any) {
+      console.error("[CustomerAuth] Erro ao atualizar perfil:", err);
+      const errorMsg = 'Erro de conexão ao salvar alterações.';
+      set({ loading: false, error: errorMsg });
+      return { success: false, error: errorMsg };
     }
   }
 }));

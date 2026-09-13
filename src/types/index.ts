@@ -124,6 +124,9 @@ export interface Customer {
   email?: string;
   cpf: string;
   phone: string;
+  avatarUrl?: string;
+  pixKey?: string;
+  pixKeyType?: 'cpf' | 'cnpj' | 'email' | 'phone' | 'random';
   address?: CustomerAddress;
   totalOrders?: number;
   totalSpent?: number;
