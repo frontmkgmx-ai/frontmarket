@@ -1,4 +1,6 @@
-import { getAdminDb } from './server-firebase-admin.js';
+const fs = require('fs');
+
+const code = `import { getAdminDb } from './server-firebase-admin.js';
 import { sendEmail } from './server-email.js';
 import { FieldValue } from 'firebase-admin/firestore';
 import crypto from 'crypto';
@@ -45,7 +47,7 @@ export interface BaseEvent {
 
 export async function processEvent(event: BaseEvent) {
   const db = getAdminDb();
-  const idempotencyKey = crypto.createHash('sha256').update(`${event.type}_${event.eventId}`).digest('hex');
+  const idempotencyKey = crypto.createHash('sha256').update(\`\${event.type}_\${event.eventId}\`).digest('hex');
   const eventDocRef = db.collection('system_events').doc(idempotencyKey);
   
   const claimResult = await db.runTransaction(async (t: any) => {
@@ -85,9 +87,9 @@ export async function processEvent(event: BaseEvent) {
 
   if (!claimResult.claim) {
     if (claimResult.reason === 'already_processed') {
-      console.log(`[Notification Service] Event ${event.type} (${event.eventId}) already processed.`);
+      console.log(\`[Notification Service] Event \${event.type} (\${event.eventId}) already processed.\`);
     } else {
-      console.log(`[Notification Service] Event ${event.type} (${event.eventId}) currently processing by another worker.`);
+      console.log(\`[Notification Service] Event \${event.type} (\${event.eventId}) currently processing by another worker.\`);
     }
     return;
   }
@@ -122,27 +124,27 @@ async function handleInternalNotifications(db: any, event: BaseEvent) {
   switch (event.type) {
     case 'SALE_CREATED':
       title = 'Nova venda';
-      message = `Você realizou uma nova venda no pedido #${event.orderId?.slice(-6).toUpperCase()}.`;
+      message = \`Você realizou uma nova venda no pedido #\${event.orderId?.slice(-6).toUpperCase()}.\`;
       type = 'success';
       break;
     case 'ORDER_PAYMENT_CONFIRMED':
       title = 'Pagamento Confirmado';
-      message = `O pagamento do pedido #${event.orderId?.slice(-6).toUpperCase()} foi confirmado.`;
+      message = \`O pagamento do pedido #\${event.orderId?.slice(-6).toUpperCase()} foi confirmado.\`;
       type = 'success';
       break;
     case 'ORDER_STATUS_CHANGED':
       title = 'Status do Pedido Atualizado';
-      message = `O pedido #${event.orderId?.slice(-6).toUpperCase()} mudou de status.`;
+      message = \`O pedido #\${event.orderId?.slice(-6).toUpperCase()} mudou de status.\`;
       type = 'info';
       break;
     case 'ORDER_REFUNDED':
       title = 'Reembolso Solicitado';
-      message = `O pedido #${event.orderId?.slice(-6).toUpperCase()} foi reembolsado.`;
+      message = \`O pedido #\${event.orderId?.slice(-6).toUpperCase()} foi reembolsado.\`;
       type = 'success';
       break;
     case 'ORDER_CREATED':
       title = 'Novo Pedido';
-      message = `Você recebeu um novo pedido #${event.orderId?.slice(-6).toUpperCase()}.`;
+      message = \`Você recebeu um novo pedido #\${event.orderId?.slice(-6).toUpperCase()}.\`;
       type = 'info';
       break;
     case 'KYC_APPROVED':
@@ -157,28 +159,28 @@ async function handleInternalNotifications(db: any, event: BaseEvent) {
       break;
     case 'WITHDRAWAL_CREATED':
       title = 'Saque Solicitado';
-      message = `Seu saque foi solicitado e está em processamento.`;
+      message = \`Seu saque foi solicitado e está em processamento.\`;
       type = 'info';
       break;
     case 'WITHDRAWAL_FAILED':
       title = 'Saque Falhou';
-      message = `Seu saque não foi concluído.`;
+      message = \`Seu saque não foi concluído.\`;
       type = 'error';
       break;
     case 'WITHDRAWAL_COMPLETED':
       title = 'Saque Concluído';
-      message = `Seu saque foi processado com sucesso.`;
+      message = \`Seu saque foi processado com sucesso.\`;
       type = 'success';
       break;
     case 'PAYMENT_RELEASED_D3':
     case 'D3_BALANCE_RELEASED':
       title = 'Pagamento Liberado (D+3)';
-      message = `Um pagamento foi liberado para saque.`;
+      message = \`Um pagamento foi liberado para saque.\`;
       type = 'success';
       break;
     case 'D3_RELEASE_CREATED':
       title = 'Pagamento em Processamento';
-      message = `Um pagamento foi confirmado e será liberado em 3 dias úteis.`;
+      message = \`Um pagamento foi confirmado e será liberado em 3 dias úteis.\`;
       type = 'info';
       break;
     default:
@@ -196,7 +198,7 @@ async function handleInternalNotifications(db: any, event: BaseEvent) {
   };
 
   if (event.storeId) {
-     const dedupeKey = `${event.type}_${event.storeId}_${event.eventId}`;
+     const dedupeKey = \`\${event.type}_\${event.storeId}_\${event.eventId}\`;
      const notifRef = db.collection('stores').doc(event.storeId).collection('notifications').doc(crypto.createHash('sha256').update(dedupeKey).digest('hex'));
      
      const docSnap = await notifRef.get();
@@ -236,43 +238,43 @@ async function handleEmails(db: any, event: BaseEvent) {
       switch (event.type) {
         case 'SALE_CREATED':
           subject = 'Nova Venda Realizada!';
-          html = `<p>Parabéns! Você realizou uma nova venda no pedido #${event.orderId?.slice(-6).toUpperCase()}.</p>`;
+          html = \`<p>Parabéns! Você realizou uma nova venda no pedido #\${event.orderId?.slice(-6).toUpperCase()}.</p>\`;
           break;
         case 'WITHDRAWAL_CREATED':
           subject = 'Saque Solicitado';
-          html = `<p>Recebemos sua solicitação de saque e ela já está em processamento.</p>`;
+          html = \`<p>Recebemos sua solicitação de saque e ela já está em processamento.</p>\`;
           break;
         case 'WITHDRAWAL_COMPLETED':
           subject = 'Saque Concluído com Sucesso';
-          html = `<p>A transferência referente ao seu saque foi concluída para sua conta bancária via PIX.</p>`;
+          html = \`<p>A transferência referente ao seu saque foi concluída para sua conta bancária via PIX.</p>\`;
           break;
         case 'WITHDRAWAL_FAILED':
           subject = 'Falha no Saque';
-          html = `<p>Ocorreu um problema ao processar seu saque. O valor retornou para sua carteira.</p>`;
+          html = \`<p>Ocorreu um problema ao processar seu saque. O valor retornou para sua carteira.</p>\`;
           break;
         case 'D3_RELEASE_CREATED':
           subject = 'Pagamento em D+3 Confirmado';
-          html = `<p>Um pagamento foi confirmado e seu valor correspondente foi provisionado para liberação na sua carteira em 3 dias úteis.</p>`;
+          html = \`<p>Um pagamento foi confirmado e seu valor correspondente foi provisionado para liberação na sua carteira em 3 dias úteis.</p>\`;
           break;
         case 'PAYMENT_RELEASED_D3':
         case 'D3_BALANCE_RELEASED':
           subject = 'Saldo Liberado!';
-          html = `<p>O período de retenção D+3 de uma de suas vendas foi concluído e o valor agora está disponível para saque na sua carteira.</p>`;
+          html = \`<p>O período de retenção D+3 de uma de suas vendas foi concluído e o valor agora está disponível para saque na sua carteira.</p>\`;
           break;
         case 'KYC_APPROVED':
           subject = 'Documentação Aprovada';
-          html = `<p>Sua verificação de identidade foi aprovada com sucesso! Seus saques já estão liberados.</p>`;
+          html = \`<p>Sua verificação de identidade foi aprovada com sucesso! Seus saques já estão liberados.</p>\`;
           break;
         case 'KYC_DECLINED':
           subject = 'Pendência na sua Verificação de Identidade';
-          html = `<p>Houve um problema com sua verificação de identidade. Por favor, acesse o painel para reenviar seus documentos.</p>`;
+          html = \`<p>Houve um problema com sua verificação de identidade. Por favor, acesse o painel para reenviar seus documentos.</p>\`;
           break;
         default:
           continue; 
       }
 
       if (subject && html) {
-        const deliveryId = `${event.eventId}_seller_${doc.id}`;
+        const deliveryId = \`\${event.eventId}_seller_\${doc.id}\`;
         const deliveryRef = db.collection('email_deliveries').doc(deliveryId);
         
         const existing = await deliveryRef.get();
@@ -280,7 +282,7 @@ async function handleEmails(db: any, event: BaseEvent) {
            continue; 
         }
 
-        const htmlBody = `<div style="font-family: sans-serif; color: #333; line-height: 1.5;">${html}</div>`;
+        const htmlBody = \`<div style="font-family: sans-serif; color: #333; line-height: 1.5;">\${html}</div>\`;
         const textBody = html.replace(/<[^>]*>?/gm, '');
 
         await deliveryRef.set({
@@ -319,3 +321,5 @@ async function handleEmails(db: any, event: BaseEvent) {
     throw err; // throw to fail the event processing so it can be retried
   }
 }
+`;
+fs.writeFileSync('server-notification-service.ts', code);

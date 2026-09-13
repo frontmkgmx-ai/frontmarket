@@ -1,4 +1,6 @@
-import express from 'express';
+const fs = require('fs');
+
+const code = `import express from 'express';
 import { Webhook } from 'svix';
 import { FieldValue } from 'firebase-admin/firestore';
 
@@ -45,7 +47,7 @@ export function setupResendRoutes(app: express.Application) {
         const emailTo = eventData?.to?.[0] || 'unknown';
         const providerMessageId = eventData?.email_id || null;
 
-        console.log(`[Resend Webhook] Evento verificado. Tipo: ${eventType} | ID: ${svix_id}`);
+        console.log(\`[Resend Webhook] Evento verificado. Tipo: \${eventType} | ID: \${svix_id}\`);
 
         const { getAdminDb } = await import('./server-firebase-admin.js');
         const db = getAdminDb();
@@ -97,10 +99,10 @@ export function setupResendRoutes(app: express.Application) {
 
         if (!claimResult.claim) {
           if (claimResult.reason === 'already_processed') {
-             console.log(`[Resend Webhook] Webhook ${svix_id} já processado. Idempotente.`);
+             console.log(\`[Resend Webhook] Webhook \${svix_id} já processado. Idempotente.\`);
              return res.status(200).json({ success: true, message: 'Already processed' });
           } else {
-             console.log(`[Resend Webhook] Webhook ${svix_id} já está em processamento concorrente.`);
+             console.log(\`[Resend Webhook] Webhook \${svix_id} já está em processamento concorrente.\`);
              return res.status(409).json({ error: 'Concurrent processing' }); // 409 forces Resend to retry later
           }
         }
@@ -140,10 +142,10 @@ export function setupResendRoutes(app: express.Application) {
               if (newStatus !== currentStatus) {
                 updateData.status = newStatus;
                 await deliveryDoc.ref.update(updateData);
-                console.log(`[Resend Webhook] email_deliveries ${deliveryDoc.id} atualizado para ${newStatus}`);
+                console.log(\`[Resend Webhook] email_deliveries \${deliveryDoc.id} atualizado para \${newStatus}\`);
               }
             } else {
-               console.log(`[Resend Webhook] Nenhum delivery encontrado para o providerMessageId ${providerMessageId}`);
+               console.log(\`[Resend Webhook] Nenhum delivery encontrado para o providerMessageId \${providerMessageId}\`);
                // Event is valid but uncorrelated. We persist it but don't fail.
             }
           }
@@ -175,3 +177,6 @@ export function setupResendRoutes(app: express.Application) {
     }
   );
 }
+`;
+
+fs.writeFileSync('server-resend.ts', code);

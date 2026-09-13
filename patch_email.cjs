@@ -1,4 +1,6 @@
-import { Resend } from 'resend';
+const fs = require('fs');
+
+const code = `import { Resend } from 'resend';
 
 // Inicializa o cliente Resend apenas com variável de ambiente (nunca usar strings fixas no código)
 const resend = new Resend(process.env.RESEND_API_KEY || '');
@@ -15,14 +17,14 @@ function isValidEmail(email: string): boolean {
   email = email.trim();
   if (email.length < 5 || email.length > 254) return false;
   // Basic sanity check for email
-  const regex = /^[^@]+@[^@]+.[^@]+$/;
+  const regex = /^[^@]+@[^@]+\.[^@]+$/;
   return regex.test(email);
 }
 
 /**
  * Serviço centralizado para disparo de e-mails transacionais via Resend.
  */
-export async function sendEmail({ to, subject, html, text }: SendEmailOptions): Promise<{ success: boolean; provider: string; providerMessageId?: string | null; error?: string | null }> {
+export async function sendEmail({ to, subject, html, text }: SendEmailOptions) {
   try {
     // 1. Validations
     if (!process.env.RESEND_API_KEY) {
@@ -62,10 +64,13 @@ export async function sendEmail({ to, subject, html, text }: SendEmailOptions): 
       return { success: false, provider: 'resend', error: 'PROVIDER_ERROR: ' + response.error.message };
     }
 
-    console.log(`[Resend Email Service] Email sent successfully. providerMessageId: ${response.data?.id}`);
+    console.log(\`[Resend Email Service] Email sent successfully. providerMessageId: \${response.data?.id}\`);
     return { success: true, provider: 'resend', providerMessageId: response.data?.id };
   } catch (err: any) {
     console.error('[Resend Email Service] Network/Internal error:', err.name);
     return { success: false, provider: 'resend', error: 'INTERNAL_ERROR: ' + err.message };
   }
 }
+`;
+
+fs.writeFileSync('server-email.ts', code);

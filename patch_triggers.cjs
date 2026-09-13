@@ -1,4 +1,6 @@
-import { getAdminDb } from './server-firebase-admin.js';
+const fs = require('fs');
+
+const code = `import { getAdminDb } from './server-firebase-admin.js';
 import { sendEmail } from './server-email.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
@@ -39,7 +41,7 @@ export async function triggerOrderStatusEmail(storeId: string, orderId: string, 
     if (!customerEmail) return;
 
     const customerName = orderData?.customer?.name || orderData?.customerName || 'Cliente';
-    const totalAmount = orderData?.total != null ? `R$ ${Number(orderData.total).toFixed(2).replace('.', ',')}` : '';
+    const totalAmount = orderData?.total != null ? \`R$ \${Number(orderData.total).toFixed(2).replace('.', ',')}\` : '';
     const items = orderData?.items || [];
     
     const escapeHtml = (unsafe: string) => {
@@ -49,18 +51,18 @@ export async function triggerOrderStatusEmail(storeId: string, orderId: string, 
     const replaceVars = (text: string) => {
       if (!text) return '';
       return text
-        .replace(/\{\{customer_name\}\}/g, escapeHtml(customerName))
-        .replace(/\{\{order_id\}\}/g, escapeHtml(orderId))
-        .replace(/\{\{store_name\}\}/g, escapeHtml(storeName))
-        .replace(/\{\{total_amount\}\}/g, escapeHtml(totalAmount));
+        .replace(/\\{\\{customer_name\\}\\}/g, escapeHtml(customerName))
+        .replace(/\\{\\{order_id\\}\\}/g, escapeHtml(orderId))
+        .replace(/\\{\\{store_name\\}\\}/g, escapeHtml(storeName))
+        .replace(/\\{\\{total_amount\\}\\}/g, escapeHtml(totalAmount));
     };
 
     // 1. Enviar Email de Status
     const subject = replaceVars(statusConfig.subject);
     const body = replaceVars(statusConfig.body);
-    const htmlBody = `<div style="font-family: sans-serif; white-space: pre-wrap; color: #333; line-height: 1.5;">${body}</div>`;
+    const htmlBody = \`<div style="font-family: sans-serif; white-space: pre-wrap; color: #333; line-height: 1.5;">\${body}</div>\`;
 
-    const deliveryId1 = eventId ? `${eventId}_status` : db.collection('email_deliveries').doc().id;
+    const deliveryId1 = eventId ? \`\${eventId}_status\` : db.collection('email_deliveries').doc().id;
     const deliveryRef1 = db.collection('email_deliveries').doc(deliveryId1);
     
     const existing1 = await deliveryRef1.get();
@@ -108,11 +110,11 @@ export async function triggerOrderStatusEmail(storeId: string, orderId: string, 
         const prodEmailRules = settings.productEmails.filter(p => p.productId === prodId && p.enabled);
         
         for (const rule of prodEmailRules) {
-          const prodSubject = replaceVars(rule.subject).replace(/\{\{product_name\}\}/g, escapeHtml(item.name || 'Produto'));
-          const prodBody = replaceVars(rule.body).replace(/\{\{product_name\}\}/g, escapeHtml(item.name || 'Produto'));
-          const prodHtml = `<div style="font-family: sans-serif; white-space: pre-wrap; color: #333; line-height: 1.5;">${prodBody}</div>`;
+          const prodSubject = replaceVars(rule.subject).replace(/\\{\\{product_name\\}\\}/g, escapeHtml(item.name || 'Produto'));
+          const prodBody = replaceVars(rule.body).replace(/\\{\\{product_name\\}\\}/g, escapeHtml(item.name || 'Produto'));
+          const prodHtml = \`<div style="font-family: sans-serif; white-space: pre-wrap; color: #333; line-height: 1.5;">\${prodBody}</div>\`;
           
-          const deliveryId2 = eventId ? `${eventId}_prod_${prodId}` : db.collection('email_deliveries').doc().id;
+          const deliveryId2 = eventId ? \`\${eventId}_prod_\${prodId}\` : db.collection('email_deliveries').doc().id;
           const deliveryRef2 = db.collection('email_deliveries').doc(deliveryId2);
           
           const existing2 = await deliveryRef2.get();
@@ -157,3 +159,6 @@ export async function triggerOrderStatusEmail(storeId: string, orderId: string, 
     throw err;
   }
 }
+`;
+
+fs.writeFileSync('server-email-triggers.ts', code);

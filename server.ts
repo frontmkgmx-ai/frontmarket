@@ -135,9 +135,9 @@ async function startServer() {
       });
       
       if (result.success) {
-        res.json({ success: true, provider: 'resend', messageId: result.data?.id });
+        res.json({ success: true, provider: 'resend', messageId: result.providerMessageId });
       } else {
-        res.json({ success: false, provider: 'resend', code: result.error });
+        res.status(500).json({ success: false, provider: 'resend', code: result.error });
       }
     } catch (err: any) {
       console.error('[Test Email] Error:', err.message);
@@ -175,6 +175,7 @@ async function startServer() {
       const { triggerOrderStatusEmail } = await import('./server-email-triggers.js');
       const { processEvent } = await import('./server-notification-service.js');
       
+      // Run and await
       await Promise.all([
         triggerOrderStatusEmail(storeId, orderId, status),
         processEvent({
@@ -185,7 +186,7 @@ async function startServer() {
           source: 'admin_panel',
           occurredAt: new Date().toISOString()
         })
-      ]).catch(console.error);
+      ]);
 
       res.json({ success: true });
     } catch (err) {

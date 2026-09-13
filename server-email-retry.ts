@@ -45,15 +45,15 @@ export async function runEmailRetryCycle() {
       if (emailRes.success) {
         await doc.ref.update({
           status: 'sent',
-          providerMessageId: emailRes.data?.id || null,
+          providerMessageId: emailRes.providerMessageId || null,
           sentAt: require('firebase-admin/firestore').FieldValue.serverTimestamp(),
           updatedAt: require('firebase-admin/firestore').FieldValue.serverTimestamp(),
           retryCount: retryCount + 1
         });
       } else {
         await doc.ref.update({
-          lastErrorCode: emailRes.error ? (typeof emailRes.error === 'string' ? emailRes.error : emailRes.error.name) : null,
-          lastErrorMessage: emailRes.error ? (typeof emailRes.error === 'string' ? emailRes.error : emailRes.error.message) : null,
+          lastErrorCode: emailRes.error ? (String(emailRes.error)) : null,
+          lastErrorMessage: emailRes.error ? (String(emailRes.error)) : null,
           retryCount: retryCount + 1,
           status: retryCount >= 2 ? 'permanent_failure' : 'failed',
           updatedAt: require('firebase-admin/firestore').FieldValue.serverTimestamp()
