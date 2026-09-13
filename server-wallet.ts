@@ -136,6 +136,19 @@ export function setupWalletRoutes(app: express.Express, authMiddleware: any, get
         db
       );
 
+      if (result.success) {
+        import('./server-notification-service.js').then(({ processEvent }) => {
+          processEvent({
+            eventId: 'WD_CREATED_' + result.withdrawalId,
+            type: 'WITHDRAWAL_CREATED',
+            storeId,
+            withdrawalId: result.withdrawalId,
+            source: 'wallet',
+            occurredAt: new Date().toISOString()
+          }).catch(console.error);
+        });
+      }
+      
       if (!result.success) {
         const statusCode =
           result.code === 'FORBIDDEN' || result.code === 'KYC_REQUIRED' ? 403 :

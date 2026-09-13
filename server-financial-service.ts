@@ -429,6 +429,21 @@ export class FinancialWalletService {
         releaseAt: releaseAtTs.toDate().toISOString()
       };
     });
+
+    if (result && result.success) {
+      import('./server-notification-service.js').then(({ processEvent }) => {
+        processEvent({
+          eventId: `D3_CREATED_${storeId}_${orderId}`,
+          type: 'D3_RELEASE_CREATED' as any, // D3_RELEASE_CREATED equivalent?
+          storeId,
+          orderId,
+          source: 'system',
+          occurredAt: new Date().toISOString()
+        }).catch(console.error);
+      });
+    }
+
+    return result;
   }
 
   /**
@@ -512,10 +527,14 @@ export class FinancialWalletService {
       const curPending = Number(wallet.pendingBalanceCents) || 0;
       const curAvailable = Number(wallet.availableBalanceCents) || 0;
 
+      if (curPending < netAmountCents) {
+        throw new Error('Invariante violada: saldo pendente insuficiente para cobrir o release. Corrupção financeira detectada.');
+      }
+
       // Invariantes matemáticas:
       // pending diminui exatamente netAmountCents
       // available aumenta exatamente netAmountCents
-      const nextPending = Math.max(0, curPending - netAmountCents);
+      const nextPending = curPending - netAmountCents;
       const nextAvailable = curAvailable + netAmountCents;
       const nextVersion = (Number(wallet.version) || 1) + 1;
 
@@ -942,7 +961,11 @@ export class FinancialWalletService {
       const walletSnap = await t.get(walletRef);
       if (walletSnap.exists) {
         const w = walletSnap.data() as WalletDocument;
-        const nextReserved = Math.max(0, (Number(w.reservedBalanceCents) || 0) - totalDeductedCents);
+        const currentReserved = Number(w.reservedBalanceCents) || 0;
+        if (currentReserved < totalDeductedCents) {
+           throw new Error('Invariante violada: saldo reservado insuficiente para a operação.');
+        }
+        const nextReserved = currentReserved - totalDeductedCents;
         const nextTotalWithdrawn = (Number(w.totalWithdrawnCents) || 0) + totalDeductedCents;
 
         t.set(
@@ -961,6 +984,17 @@ export class FinancialWalletService {
         status: 'completed',
         misticTransactionId: misticTransactionId || wData.misticTransactionId || null,
         updatedAt: FieldValue.serverTimestamp()
+      });
+
+      import('./server-notification-service.js').then(({ processEvent }) => {
+        processEvent({
+          eventId: `WITHDRAWAL_COMPLETED_${withdrawalId}`,
+          type: 'WITHDRAWAL_COMPLETED',
+          storeId,
+          withdrawalId,
+          source: 'system',
+          occurredAt: new Date().toISOString()
+        }).catch(console.error);
       });
 
       const newLedgerDoc = ledgerRef.doc();
@@ -983,6 +1017,17 @@ export class FinancialWalletService {
         createdAt: FieldValue.serverTimestamp()
       };
       t.set(newLedgerDoc, ledgerEntry);
+    });
+
+    import('./server-notification-service.js').then(({ processEvent }) => {
+      processEvent({
+        eventId: `WD_FAILED_${params.withdrawalId}`,
+        type: 'WITHDRAWAL_FAILED',
+        storeId: params.storeId,
+        withdrawalId: params.withdrawalId,
+        source: 'system',
+        occurredAt: new Date().toISOString()
+      }).catch(console.error);
     });
   }
 
@@ -1013,7 +1058,11 @@ export class FinancialWalletService {
       const walletSnap = await t.get(walletRef);
       if (walletSnap.exists) {
         const w = walletSnap.data() as WalletDocument;
-        const nextReserved = Math.max(0, (Number(w.reservedBalanceCents) || 0) - totalDeductedCents);
+        const currentReserved = Number(w.reservedBalanceCents) || 0;
+        if (currentReserved < totalDeductedCents) {
+           throw new Error('Invariante violada: saldo reservado insuficiente para a operação.');
+        }
+        const nextReserved = currentReserved - totalDeductedCents;
         const nextAvailable = (Number(w.availableBalanceCents) || 0) + totalDeductedCents;
 
         t.set(

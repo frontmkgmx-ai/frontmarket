@@ -103,16 +103,90 @@ async function startServer() {
 
   // Health check
   
+  app.post('/api/admin/test-email', async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Não autorizado' });
+      }
+      
+      const token = authHeader.split('Bearer ')[1];
+      const { getFirebaseAdmin } = await import('./server-firebase-admin.js');
+      const admin = getFirebaseAdmin();
+      const decodedToken = await admin.auth().verifyIdToken(token);
+      
+      // Ensure the user has admin role or stores
+      const { getAdminDb } = await import('./server-firebase-admin.js');
+      const db = getAdminDb();
+      const userDoc = await db.collection('users').doc(decodedToken.uid).get();
+      if (!userDoc.exists) return res.status(403).json({ error: 'Usuário não encontrado' });
+      
+      const { to } = req.body;
+      if (!to || !to.includes('@')) return res.status(400).json({ error: 'E-mail inválido' });
+      
+      const { sendEmail } = await import('./server-email.js');
+      const result = await sendEmail({
+        to,
+        subject: 'Teste de Configuração Resend',
+        html: '<p>Este é um e-mail de teste do sistema de notificações da loja.</p>',
+        text: 'Este é um e-mail de teste do sistema de notificações da loja.'
+      });
+      
+      if (result.success) {
+        res.json({ success: true, provider: 'resend', messageId: result.data?.id });
+      } else {
+        res.json({ success: false, provider: 'resend', code: result.error });
+      }
+    } catch (err: any) {
+      console.error('[Test Email] Error:', err.message);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // Endpoint auxiliar para disparar emails ao atualizar status pelo painel
   app.post('/api/orders/:storeId/:orderId/trigger-email', async (req, res) => {
     try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Não autorizado. Token ausente.' });
+      }
+      
+      const token = authHeader.split('Bearer ')[1];
+      const { getFirebaseAdmin, getAdminDb } = await import('./server-firebase-admin.js');
+      const admin = getFirebaseAdmin();
+      const decodedToken = await admin.auth().verifyIdToken(token);
+      
       const { storeId, orderId } = req.params;
+      
+      // Verify store access
+      const db = getAdminDb();
+      const userDoc = await db.collection('users').doc(decodedToken.uid).get();
+      const userData = userDoc.data();
+      
+      const userStores = userData?.stores || [];
+      if (!userStores.includes(storeId)) {
+         return res.status(403).json({ error: 'Acesso negado à loja.' });
+      }
+
       const { status } = req.body;
       const { triggerOrderStatusEmail } = await import('./server-email-triggers.js');
-      await triggerOrderStatusEmail(storeId, orderId, status);
+      const { processEvent } = await import('./server-notification-service.js');
+      
+      await Promise.all([
+        triggerOrderStatusEmail(storeId, orderId, status),
+        processEvent({
+          eventId: 'STATUS_' + orderId + '_' + status,
+          type: 'ORDER_STATUS_CHANGED',
+          storeId,
+          orderId,
+          source: 'admin_panel',
+          occurredAt: new Date().toISOString()
+        })
+      ]).catch(console.error);
+
       res.json({ success: true });
     } catch (err) {
-      console.error(err);
+      console.error('[Trigger Email] Erro:', err);
       res.status(500).json({ error: 'Erro ao disparar email' });
     }
   });

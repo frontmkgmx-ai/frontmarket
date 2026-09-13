@@ -1,5 +1,5 @@
 import express from 'express';
-import { triggerOrderStatusEmail } from './server-email-triggers.js';
+import { processEvent } from './server-notification-service.js';
 import crypto from 'crypto';
 import { FieldValue } from 'firebase-admin/firestore';
 import { FinancialWalletService } from './server-financial-service';
@@ -273,6 +273,17 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
 
       await orderRef.set(newOrder);
 
+      import('./server-notification-service.js').then(({ processEvent }) => {
+        processEvent({
+          eventId: 'CREATED_' + orderId,
+          type: 'ORDER_CREATED',
+          storeId,
+          orderId,
+          source: 'checkout',
+          occurredAt: new Date().toISOString()
+        }).catch(console.error);
+      });
+
       res.json({
         success: true,
         orderId,
@@ -304,15 +315,14 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
       const data = orderSnap.data();
       if (data.status === 'pending') {
         await orderRef.update({ status: 'refunded', updatedAt: FieldValue.serverTimestamp(), refundedAt: FieldValue.serverTimestamp(), refundReason: 'MisticPay Refund' });
-      triggerOrderStatusEmail(storeId, orderId, 'refunded').catch(console.error);
-      
-      await db.collection('stores').doc(storeId).collection('notifications').add({
-        title: 'Reembolso Solicitado',
-        message: `O pedido #${orderId.slice(-6).toUpperCase()} foi reembolsado com sucesso.`,
-        type: 'success',
-        read: false,
-        createdAt: new Date().toISOString()
-      });
+      processEvent({
+        eventId: 'REFUND_' + orderId,
+        type: 'ORDER_REFUNDED',
+        storeId,
+        orderId,
+        source: 'misticpay',
+        occurredAt: new Date().toISOString()
+      }).catch(console.error);
       
       }
       return res.json({ success: true });
@@ -374,7 +384,24 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
           console.error('[MisticPay Sync] Erro ao atualizar carteira do logista:', walletErr);
         }
 
-        triggerOrderStatusEmail(storeId, orderId, 'paid').catch(console.error);
+        Promise.all([
+          processEvent({
+            eventId: 'PAID_' + orderId,
+            type: 'ORDER_PAYMENT_CONFIRMED',
+            storeId,
+            orderId,
+            source: 'misticpay',
+            occurredAt: new Date().toISOString()
+          }),
+          processEvent({
+            eventId: 'SALE_' + orderId,
+            type: 'SALE_CREATED',
+            storeId,
+            orderId,
+            source: 'misticpay',
+            occurredAt: new Date().toISOString()
+          })
+        ]).catch(console.error);
         return res.json({ status: 'paid' });
       }
 
@@ -715,6 +742,26 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
           });
 
           console.log(`[MisticPay Webhook] Sucesso! Pedido ${orderId} pago, D+3 agendado: ${creditResult.releaseAt}`);
+
+          Promise.all([
+            processEvent({
+              eventId: 'PAID_' + orderId,
+              type: 'ORDER_PAYMENT_CONFIRMED',
+              storeId,
+              orderId,
+              source: 'misticpay_webhook',
+              occurredAt: new Date().toISOString()
+            }),
+            processEvent({
+              eventId: 'SALE_' + orderId,
+              type: 'SALE_CREATED',
+              storeId,
+              orderId,
+              source: 'misticpay_webhook',
+              occurredAt: new Date().toISOString()
+            })
+          ]).catch(console.error);
+
           return res.status(200).json({
             success: true,
             orderId,

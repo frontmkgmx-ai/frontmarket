@@ -1,5 +1,6 @@
 import { getAdminDb } from './server-firebase-admin.js';
 import { sendEmail } from './server-email.js';
+import { FieldValue } from 'firebase-admin/firestore';
 
 interface StatusEmails {
   paid: { enabled: boolean; subject: string; body: string };
@@ -46,28 +47,44 @@ export async function triggerOrderStatusEmail(storeId: string, orderId: string, 
     const totalAmount = orderData?.total != null ? `R$ ${Number(orderData.total).toFixed(2).replace('.', ',')}` : '';
     const items = orderData?.items || [];
     
-    // Função para trocar variáveis
+    // Função para trocar variáveis com escape HTML para prevenir XSS
+    const escapeHtml = (unsafe: string) => {
+      return (unsafe || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    };
+
     const replaceVars = (text: string) => {
       if (!text) return '';
       return text
-        .replace(/\{\{customer_name\}\}/g, customerName)
-        .replace(/\{\{order_id\}\}/g, orderId)
-        .replace(/\{\{store_name\}\}/g, storeName)
-        .replace(/\{\{total_amount\}\}/g, totalAmount);
+        .replace(/\{\{customer_name\}\}/g, escapeHtml(customerName))
+        .replace(/\{\{order_id\}\}/g, escapeHtml(orderId))
+        .replace(/\{\{store_name\}\}/g, escapeHtml(storeName))
+        .replace(/\{\{total_amount\}\}/g, escapeHtml(totalAmount));
     };
 
     // 1. Enviar Email de Status
     const subject = replaceVars(statusConfig.subject);
     const body = replaceVars(statusConfig.body);
-
-    // Formatar body para HTML básico mantendo quebras de linha
     const htmlBody = `<div style="font-family: sans-serif; white-space: pre-wrap; color: #333; line-height: 1.5;">${body}</div>`;
 
-    await sendEmail({
+    const emailRes = await sendEmail({
       to: customerEmail,
       subject,
       html: htmlBody,
       text: body
+    });
+
+    await db.collection('email_deliveries').add({
+      storeId,
+      orderId,
+      to: customerEmail,
+      subject: subject,
+      status: emailRes.success ? 'sent' : 'failed',
+      provider: 'resend',
+      providerMessageId: emailRes.data?.id || null,
+      lastErrorCode: emailRes.error ? (typeof emailRes.error === 'string' ? emailRes.error : emailRes.error.name) : null,
+      lastErrorMessage: emailRes.error ? (typeof emailRes.error === 'string' ? emailRes.error : emailRes.error.message) : null,
+      createdAt: FieldValue.serverTimestamp(),
+      sentAt: emailRes.success ? FieldValue.serverTimestamp() : null
     });
 
     // 2. Se o status for "paid", verificar se há e-mails específicos de produtos para enviar
@@ -77,19 +94,32 @@ export async function triggerOrderStatusEmail(storeId: string, orderId: string, 
         const prodEmailRules = settings.productEmails.filter(p => p.productId === prodId && p.enabled);
         
         for (const rule of prodEmailRules) {
-          const prodSubject = replaceVars(rule.subject).replace(/\{\{product_name\}\}/g, item.name || 'Produto');
-          const prodBody = replaceVars(rule.body).replace(/\{\{product_name\}\}/g, item.name || 'Produto');
+          const prodSubject = replaceVars(rule.subject).replace(/\{\{product_name\}\}/g, escapeHtml(item.name || 'Produto'));
+          const prodBody = replaceVars(rule.body).replace(/\{\{product_name\}\}/g, escapeHtml(item.name || 'Produto'));
           
-          await sendEmail({
+          const prodEmailRes = await sendEmail({
             to: customerEmail,
             subject: prodSubject,
             html: `<div style="font-family: sans-serif; white-space: pre-wrap; color: #333; line-height: 1.5;">${prodBody}</div>`,
             text: prodBody
           });
+
+          await db.collection('email_deliveries').add({
+            storeId,
+            orderId,
+            to: customerEmail,
+            subject: prodSubject,
+            status: prodEmailRes.success ? 'sent' : 'failed',
+            provider: 'resend',
+            providerMessageId: prodEmailRes.data?.id || null,
+            lastErrorCode: prodEmailRes.error ? (typeof prodEmailRes.error === 'string' ? prodEmailRes.error : prodEmailRes.error.name) : null,
+            lastErrorMessage: prodEmailRes.error ? (typeof prodEmailRes.error === 'string' ? prodEmailRes.error : prodEmailRes.error.message) : null,
+            createdAt: FieldValue.serverTimestamp(),
+            sentAt: prodEmailRes.success ? FieldValue.serverTimestamp() : null
+          });
         }
       }
     }
-
   } catch (err: any) {
     console.error('[Email Trigger] Falha ao disparar emails automáticos:', err);
   }

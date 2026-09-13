@@ -20,7 +20,7 @@ export async function sendEmail({ to, subject, html, text }: SendEmailOptions) {
     if (!process.env.RESEND_API_KEY) {
       console.warn('[Resend Email Service] RESEND_API_KEY não configurada. E-mail simulado e ignorado.');
       console.log(`[Email Mock] Para: ${to} | Assunto: ${subject}`);
-      return { success: true, mocked: true };
+      return { success: false, error: 'RESEND_API_KEY not configured' };
     }
 
     const response = await resend.emails.send({

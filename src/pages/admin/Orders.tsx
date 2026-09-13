@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { collection, onSnapshot, query, orderBy, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../../firebase/config';
+import { db, auth } from '../../firebase/config';
 import { useAuthStore } from '../../store/authStore';
 import { Order, OrderStatus } from '../../types';
 import { formatCurrency } from '../../lib/utils';
@@ -154,9 +154,13 @@ export function Orders() {
       });
       // Try to trigger email
       try {
+        const token = await auth.currentUser?.getIdToken();
         await fetch(`/api/orders/${activeStore.id}/${orderId}/trigger-email`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
           body: JSON.stringify({ status: newStatus })
         });
       } catch (e) {
