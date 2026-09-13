@@ -46,8 +46,6 @@ export function Checkout() {
   // Form State - Dados do Pagador PIX e Cliente
   const [payerName, setPayerName] = useState('');
   const [payerDocument, setPayerDocument] = useState('');
-  const [splitUser, setSplitUser] = useState('');
-  const [showSplitField, setShowSplitField] = useState(false);
 
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -165,20 +163,14 @@ export function Checkout() {
 
     const cleanPayerName = payerName.trim();
     const cleanPayerDoc = payerDocument.replace(/\D/g, '');
-    const cleanSplitUser = splitUser.trim();
 
     if (!cleanPayerName || cleanPayerName.length < 3) {
-      alert('Por favor, informe o Nome Completo do pagador (payerName).');
+      alert('Por favor, informe o Nome Completo do pagador.');
       return;
     }
 
     if (cleanPayerDoc.length !== 11) {
-      alert('Por favor, informe um CPF válido com 11 dígitos para o pagador (payerDocument).');
-      return;
-    }
-
-    if (cleanSplitUser && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanSplitUser)) {
-      alert('Por favor, informe um e-mail válido para a divisão de split (splitUser) ou deixe o campo vazio.');
+      alert('Por favor, informe um CPF válido com 11 dígitos para o pagador.');
       return;
     }
 
@@ -196,7 +188,6 @@ export function Checkout() {
         customerUsername: customer?.username || '',
         payerName: cleanPayerName,
         payerDocument: cleanPayerDoc,
-        splitUser: cleanSplitUser || undefined,
         items,
         subtotal: total,
         total,
@@ -226,7 +217,7 @@ export function Checkout() {
       const data = await res.json();
       
       if (!res.ok) {
-        throw new Error(data.error || 'Falha ao processar pagamento via Mistic Pay.');
+        throw new Error(data.error || 'Falha ao processar pagamento via PIX.');
       }
 
       setOrderId(data.orderId);
@@ -284,13 +275,13 @@ export function Checkout() {
             </div>
           )}
 
-          {/* Instruções PIX Mistic Pay */}
+          {/* Instruções PIX */}
           {!orderPaid && !orderCancelled && (
             <div className="bg-emerald-50/70 border border-emerald-200/80 p-4 sm:p-6 rounded-2xl text-left space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1.5">
                   <QrCode className="w-4 h-4 text-emerald-700" />
-                  PIX Instantâneo • Mistic Pay
+                  PIX Instantâneo
                 </span>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-md">
@@ -303,7 +294,7 @@ export function Checkout() {
               {/* Informações do Pagador Vinculadas ao PIX */}
               <div className="bg-white/80 border border-emerald-200 rounded-xl p-3 text-xs space-y-1">
                 <div className="text-[11px] font-bold text-emerald-800 uppercase tracking-wide">
-                  Dados do Pagador Registrado na Mistic Pay:
+                  Dados do Pagador Registrado:
                 </div>
                 <div className="flex flex-col sm:flex-row sm:justify-between text-slate-700 font-medium">
                   <span><strong>Titular:</strong> {displayPayerName}</span>
@@ -318,7 +309,7 @@ export function Checkout() {
                 <div className="flex justify-center py-2">
                   <img 
                     src={pixQrCodeBase64 || pixQrcodeUrl} 
-                    alt="QR Code PIX Mistic Pay" 
+                    alt="QR Code PIX" 
                     className="w-44 h-44 sm:w-52 sm:h-52 rounded-xl shadow-sm border border-emerald-200 bg-white p-2" 
                   />
                 </div>
@@ -448,27 +439,27 @@ export function Checkout() {
               </div>
             )}
 
-            {/* DADOS DO PAGADOR PIX (MISTIC PAY API) */}
+            {/* DADOS DO PAGADOR PIX */}
             <div className="space-y-4">
               <div className="border-b border-slate-100 pb-2">
                 <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
                   <QrCode className="w-4 h-4 text-emerald-600" />
-                  Dados do Pagador (PIX Mistic Pay)
+                  Dados do Pagador (PIX)
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Estes dados serão registrados na transação PIX para garantir a validação com a sua conta bancária.
+                  Estes dados serão vinculados à cobrança PIX para validação bancária.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Nome do Pagador * <span className="font-normal text-slate-400 font-mono text-[10px]">(payerName)</span>
+                    Nome do Titular da Conta *
                   </label>
                   <input 
                     type="text" 
                     required 
-                    placeholder="Nome completo do titular da conta"
+                    placeholder="Nome completo do titular"
                     value={payerName} 
                     onChange={e => setPayerName(e.target.value)} 
                     className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none" 
@@ -477,7 +468,7 @@ export function Checkout() {
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    CPF do Pagador * <span className="font-normal text-slate-400 font-mono text-[10px]">(payerDocument)</span>
+                    CPF do Titular *
                   </label>
                   <input 
                     type="text" 
@@ -487,46 +478,8 @@ export function Checkout() {
                     onChange={e => setPayerDocument(maskCPF(e.target.value))} 
                     className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono" 
                   />
-                  <span className="text-[10px] text-slate-400 mt-1 block">Sem formatação ao gerar PIX (11 dígitos)</span>
+                  <span className="text-[10px] text-slate-400 mt-1 block">CPF do titular da conta bancária</span>
                 </div>
-              </div>
-
-              {/* Campo Opcional: splitUser */}
-              <div className="pt-1">
-                {!showSplitField ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowSplitField(true)}
-                    className="text-[11px] text-slate-500 hover:text-indigo-600 font-medium underline underline-offset-2 transition-colors cursor-pointer"
-                  >
-                    + Informar e-mail para divisão de split (splitUser - opcional)
-                  </button>
-                ) : (
-                  <div className="bg-slate-50/80 p-3 rounded-2xl border border-slate-200 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <label className="block text-xs font-bold text-slate-700">
-                        Email para Divisão de Split <span className="font-normal text-slate-400 font-mono text-[10px]">(splitUser - opcional)</span>
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => { setShowSplitField(false); setSplitUser(''); }}
-                        className="text-[10px] text-slate-400 hover:text-rose-500"
-                      >
-                        Remover
-                      </button>
-                    </div>
-                    <input 
-                      type="email" 
-                      placeholder="usuario@plataforma.com"
-                      value={splitUser} 
-                      onChange={e => setSplitUser(e.target.value)} 
-                      className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono" 
-                    />
-                    <span className="text-[10px] text-slate-500 block">
-                      Email do usuário cadastrado na Mistic Pay que receberá a divisão da transação.
-                    </span>
-                  </div>
-                )}
               </div>
             </div>
 
