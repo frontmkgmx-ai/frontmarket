@@ -1,3 +1,10 @@
 const fs = require('fs');
-const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+let pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+
+pkg.dependencies = {
+  ...pkg.dependencies,
+  ...pkg.devDependencies
+};
+pkg.devDependencies = {};
+
+fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
