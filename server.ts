@@ -10,6 +10,7 @@ import { setupStreamxRoutes } from './server-streamx.js';
 import { setupMisticPayRoutes } from './server-misticpay.js';
 import { setupWalletRoutes } from "./server-wallet.js";
 import { startD3Scheduler } from './server-d3-scheduler.js';
+import { startEmailRetryScheduler } from './server-email-retry.js';
 import { setupKycRoutes } from './server-kyc-routes.js';
 import { setupCustomerAuthRoutes } from './server-customer-auth.js';
 import { setupResendRoutes } from './server-resend.js';
@@ -113,7 +114,8 @@ async function startServer() {
       const token = authHeader.split('Bearer ')[1];
       const { getFirebaseAdmin } = await import('./server-firebase-admin.js');
       const admin = getFirebaseAdmin();
-      const decodedToken = await admin.auth().verifyIdToken(token);
+      const { getAuth } = require('firebase-admin/auth');
+      const decodedToken = await getAuth(admin).verifyIdToken(token);
       
       // Ensure the user has admin role or stores
       const { getAdminDb } = await import('./server-firebase-admin.js');
@@ -154,7 +156,8 @@ async function startServer() {
       const token = authHeader.split('Bearer ')[1];
       const { getFirebaseAdmin, getAdminDb } = await import('./server-firebase-admin.js');
       const admin = getFirebaseAdmin();
-      const decodedToken = await admin.auth().verifyIdToken(token);
+      const { getAuth } = require('firebase-admin/auth');
+      const decodedToken = await getAuth(admin).verifyIdToken(token);
       
       const { storeId, orderId } = req.params;
       
@@ -218,6 +221,7 @@ async function startServer() {
   setupMisticPayRoutes(app, authMiddleware, getFirestore);
   setupWalletRoutes(app, authMiddleware, getFirestore);
   startD3Scheduler(getFirestore);
+  startEmailRetryScheduler();
 
   // Módulo Oficial Canônico de KYC (Didit v3)
   setupKycRoutes(app, authMiddleware, getFirestore);
@@ -241,9 +245,27 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
+
+  // Graceful shutdown
+  const gracefulShutdown = () => {
+    console.log('Recebido sinal de interrupção, iniciando graceful shutdown...');
+    server.close(() => {
+      console.log('Processo encerrado com segurança.');
+      process.exit(0);
+    });
+    
+    // Timeout para forçar o encerramento se demorar muito
+    setTimeout(() => {
+      console.error('Forçando encerramento após timeout.');
+      process.exit(1);
+    }, 10000);
+  };
+
+  process.on('SIGTERM', gracefulShutdown);
+  process.on('SIGINT', gracefulShutdown);
 }
 
 startServer();

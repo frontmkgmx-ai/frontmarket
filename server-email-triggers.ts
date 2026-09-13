@@ -16,7 +16,7 @@ interface ProductEmail {
   enabled: boolean;
 }
 
-export async function triggerOrderStatusEmail(storeId: string, orderId: string, newStatus: 'paid' | 'refunded' | 'canceled') {
+export async function triggerOrderStatusEmail(storeId: string, orderId: string, newStatus: 'paid' | 'refunded' | 'canceled', eventId?: string) {
   try {
     const db = getAdminDb();
     
@@ -73,11 +73,16 @@ export async function triggerOrderStatusEmail(storeId: string, orderId: string, 
       text: body
     });
 
-    await db.collection('email_deliveries').add({
+    const deliveryId1 = eventId ? `${eventId}_status` : db.collection('email_deliveries').doc().id;
+    await db.collection('email_deliveries').doc(deliveryId1).set({
+      id: deliveryId1,
       storeId,
       orderId,
+      eventId,
       to: customerEmail,
       subject: subject,
+      html: htmlBody,
+      text: body,
       status: emailRes.success ? 'sent' : 'failed',
       provider: 'resend',
       providerMessageId: emailRes.data?.id || null,
@@ -104,11 +109,16 @@ export async function triggerOrderStatusEmail(storeId: string, orderId: string, 
             text: prodBody
           });
 
-          await db.collection('email_deliveries').add({
+          const deliveryId2 = eventId ? `${eventId}_prod_${prodId}` : db.collection('email_deliveries').doc().id;
+          await db.collection('email_deliveries').doc(deliveryId2).set({
+            id: deliveryId2,
             storeId,
             orderId,
+            eventId,
             to: customerEmail,
             subject: prodSubject,
+            html: `<div style="font-family: sans-serif; white-space: pre-wrap; color: #333; line-height: 1.5;">${prodBody}</div>`,
+            text: prodBody,
             status: prodEmailRes.success ? 'sent' : 'failed',
             provider: 'resend',
             providerMessageId: prodEmailRes.data?.id || null,

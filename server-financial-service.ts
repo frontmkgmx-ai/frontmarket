@@ -325,7 +325,7 @@ export class FinancialWalletService {
     const confirmedAtTs = Timestamp.fromMillis(nowMs);
     const releaseAtTs = Timestamp.fromMillis(nowMs + FinancialWalletService.D3_DURATION_MS);
 
-    return await db.runTransaction(async (t: any) => {
+    const result = await db.runTransaction(async (t: any) => {
       // 1. Verificação de Idempotência no Documento de Release
       const existingReleaseSnap = await t.get(releaseRef);
       if (existingReleaseSnap.exists) {

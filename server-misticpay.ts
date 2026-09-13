@@ -418,12 +418,31 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
    */
   app.post('/api/misticpay/withdrawals/status', express.json(), async (req, res) => {
     try {
+      // Autenticação
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Não autorizado. Token ausente.' });
+      }
+      const token = authHeader.split('Bearer ')[1];
+      const { getAuth } = require('firebase-admin/auth');
+      const { getFirebaseAdmin, getAdminDb } = require('./server-firebase-admin.js');
+      const admin = getFirebaseAdmin();
+      const decodedToken = await getAuth(admin).verifyIdToken(token);
+      
       const { storeId, withdrawalId } = req.body;
       if (!storeId || !withdrawalId) {
         return res.status(400).json({ error: 'storeId e withdrawalId são obrigatórios' });
       }
+      
+      // Validação de Ownership
+      const db = getAdminDb();
+      const userDoc = await db.collection('users').doc(decodedToken.uid).get();
+      const userData = userDoc.data();
+      const userStores = userData?.stores || [];
+      if (!userStores.includes(storeId)) {
+        return res.status(403).json({ error: 'Acesso negado à loja ou tenant incorreto.' });
+      }
 
-      const db = getDb();
       
       
       const result = await FinancialWalletService.reconcileWithdrawal(db, { storeId, withdrawalId });
@@ -476,8 +495,8 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
     ).trim();
 
     if (!incomingToken || !constantTimeCompare(incomingToken, configuredSecret)) {
-      console.warn(`[MisticPay Webhook] Falha de autenticação (Token inválido ou ausente) de ${clientIp}. Prosseguindo para Verificação Ativa (Double-Check) por segurança.`);
-      // Não bloqueamos aqui com 401 pois alguns gateways removem query params e a segurança real é garantida pela Verificação Ativa (Active Check).
+      console.warn(`[MisticPay Webhook] Falha de autenticação (Token inválido ou ausente) de ${clientIp}. Abortando processamento (Fail-Closed).`);
+      return res.status(401).json({ error: 'Unauthorized: Invalid or missing webhook token.' });
     }
 
     // 3. Captura e validação segura do Payload Bruto
@@ -823,6 +842,13 @@ export function setupMisticPayRoutes(app: express.Express, authMiddleware: any, 
           if (!canTransitionState('withdrawal', wData.status || 'processing', 'completed')) {
             console.error(`[MisticPay Webhook] Transição de saque inválida: de '${wData.status}' para 'completed'.`);
             return res.status(409).json({ error: 'Transição de saque inválida.' });
+          }
+
+          // Consulta Autoritativa MisticPay API antes de confirmar o webhook financeiro
+          const activeCheck = await checkTransactionWithMistic(String(transactionId));
+          if (activeCheck.status !== 'SUCCESS' || activeCheck.state !== 'COMPLETO') {
+             console.error(`[MisticPay Webhook] Falha na verificação autoritativa do saque ${withdrawalId}: Estado: ${activeCheck.state}`);
+             return res.status(422).json({ error: 'MisticPay API não confirma transação como COMPLETO.' });
           }
 
           const claim = await WebhookService.claimEvent(db, {
