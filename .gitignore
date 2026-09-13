@@ -6,3 +6,11 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Sensitive files
+*.pem
+*.key
+service-account*.json
+firebase-admin*.json
+credentials*.json
+secrets*
