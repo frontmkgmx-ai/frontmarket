@@ -145,82 +145,219 @@ async function startServer() {
     }
   });
 
-  // Endpoint auxiliar para disparar emails ao atualizar status pelo painel
+  // Endpoint auxiliar para REENVIAR email de pedido pelo painel (Fluxo B)
   app.post('/api/orders/:storeId/:orderId/trigger-email', async (req, res) => {
     try {
       const authHeader = req.headers.authorization;
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return res.status(401).json({ error: 'Não autorizado. Token ausente.' });
       }
-      
+
       const token = authHeader.split('Bearer ')[1];
       const { getFirebaseAdmin, getAdminDb } = await import('./server-firebase-admin.js');
       const admin = getFirebaseAdmin();
       const { getAuth } = await import('firebase-admin/auth');
       const decodedToken = await getAuth(admin).verifyIdToken(token);
-      
+
       const { storeId, orderId } = req.params;
-      
-      // Verify store access
+
+      // 1-2. Autenticar vendedor e validar acesso à store
       const db = getAdminDb();
       const userDoc = await db.collection('users').doc(decodedToken.uid).get();
       const userData = userDoc.data();
-      
+
       const userStores = userData?.stores || [];
       if (!userStores.includes(storeId)) {
          return res.status(403).json({ error: 'Acesso negado à loja.' });
       }
 
-      const { status } = req.body;
-      const { triggerOrderStatusEmail } = await import('./server-email-triggers.js');
-      const { processEvent } = await import('./server-notification-service.js');
+      // 3. Buscar o pedido
+      const orderRef = db.collection('stores').doc(storeId).collection('orders').doc(orderId);
+      const orderSnap = await orderRef.get();
+      if (!orderSnap.exists) {
+        return res.status(404).json({ error: 'Pedido não encontrado.' });
+      }
+      const orderData = orderSnap.data();
+
+      // 5. Localizar o campo REAL de e-mail do comprador
+      const customerEmail = orderData?.customer?.email || orderData?.customerEmail;
       
-      // Run and await
-      await Promise.all([
-        triggerOrderStatusEmail(storeId, orderId, status),
-        processEvent({
-          eventId: 'STATUS_' + orderId + '_' + status,
-          type: 'ORDER_STATUS_CHANGED',
+      // 6. Validar o email
+      if (!customerEmail || typeof customerEmail !== 'string' || !customerEmail.includes('@')) {
+        return res.status(422).json({ error: 'Pedido não possui e-mail de comprador válido.' });
+      }
+
+      // 7. Montar o conteúdo usando dados persistidos
+      // First get store settings
+      const settingsSnap = await db.collection('stores').doc(storeId).collection('settings').doc('emails').get();
+      const settings = settingsSnap.exists ? settingsSnap.data() : null;
+      if (!settings || !settings.statusEmails) {
+        return res.status(422).json({ error: 'Loja não possui e-mails configurados.' });
+      }
+
+      const status = orderData?.status || 'paid';
+      const statusConfig = settings.statusEmails[status];
+      
+      const escapeHtml = (unsafe) => {
+        return (unsafe || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+      };
+
+      const customerName = orderData?.customer?.name || orderData?.customerName || 'Cliente';
+      const storeSnap = await db.collection('stores').doc(storeId).get();
+      const storeName = storeSnap.exists ? (storeSnap.data().name || 'Loja') : 'Loja';
+      const totalAmount = orderData?.total != null ? `R$ ${Number(orderData.total).toFixed(2).replace('.', ',')}` : '';
+
+      const replaceVars = (text) => {
+        if (!text) return '';
+        return text
+          .replace(/{\{customer_name\}\}/g, escapeHtml(customerName))
+          .replace(/{\{order_id\}\}/g, escapeHtml(orderId))
+          .replace(/{\{store_name\}\}/g, escapeHtml(storeName))
+          .replace(/{\{total_amount\}\}/g, escapeHtml(totalAmount));
+      };
+
+      // 8. Call sendEmail
+      const { sendEmail } = await import('./server-email.js');
+      const results = [];
+      const { FieldValue } = await import('firebase-admin/firestore');
+
+      // Send status email
+      if (statusConfig && statusConfig.enabled) {
+        const subject = replaceVars(statusConfig.subject);
+        const body = replaceVars(statusConfig.body);
+        const htmlBody = `<div style="font-family: sans-serif; white-space: pre-wrap; color: #333; line-height: 1.5;">${body}</div>`;
+        
+        const deliveryId = db.collection('email_deliveries').doc().id;
+        const deliveryRef = db.collection('email_deliveries').doc(deliveryId);
+        
+        await deliveryRef.set({
+          id: deliveryId,
+          type: 'order_resend',
           storeId,
           orderId,
-          source: 'admin_panel',
-          occurredAt: new Date().toISOString()
-        })
-      ]);
+          triggeredBy: decodedToken.uid,
+          to: customerEmail,
+          subject,
+          html: htmlBody,
+          text: body,
+          status: 'queued',
+          createdAt: FieldValue.serverTimestamp()
+        });
 
-      res.json({ success: true });
+        const emailRes = await sendEmail({
+          to: customerEmail,
+          subject,
+          html: htmlBody,
+          text: body
+        });
+
+        await deliveryRef.update({
+          status: emailRes.success ? 'sent' : 'failed',
+          provider: 'resend',
+          providerMessageId: emailRes.providerMessageId || null,
+          lastErrorCode: emailRes.error ? String(emailRes.error) : null,
+          lastErrorMessage: emailRes.error ? String(emailRes.error) : null,
+          sentAt: emailRes.success ? FieldValue.serverTimestamp() : null,
+          updatedAt: FieldValue.serverTimestamp()
+        });
+        
+        results.push(emailRes);
+      }
+      
+      // Also send product emails if paid
+      if (status === 'paid' && settings.productEmails && orderData.items && orderData.items.length > 0) {
+        for (const item of orderData.items) {
+          const prodId = item.productId;
+          const prodEmailRules = settings.productEmails.filter(p => p.productId === prodId && p.enabled);
+          for (const rule of prodEmailRules) {
+            const prodSubject = replaceVars(rule.subject).replace(/{\{product_name\}\}/g, escapeHtml(item.name || 'Produto'));
+            const prodBody = replaceVars(rule.body).replace(/{\{product_name\}\}/g, escapeHtml(item.name || 'Produto'));
+            const prodHtml = `<div style="font-family: sans-serif; white-space: pre-wrap; color: #333; line-height: 1.5;">${prodBody}</div>`;
+            
+            const deliveryId = db.collection('email_deliveries').doc().id;
+            const deliveryRef = db.collection('email_deliveries').doc(deliveryId);
+            await deliveryRef.set({
+              id: deliveryId,
+              type: 'order_resend',
+              storeId,
+              orderId,
+              triggeredBy: decodedToken.uid,
+              to: customerEmail,
+              subject: prodSubject,
+              html: prodHtml,
+              text: prodBody,
+              status: 'queued',
+              createdAt: FieldValue.serverTimestamp()
+            });
+
+            const emailRes = await sendEmail({
+              to: customerEmail,
+              subject: prodSubject,
+              html: prodHtml,
+              text: prodBody
+            });
+
+            await deliveryRef.update({
+              status: emailRes.success ? 'sent' : 'failed',
+              provider: 'resend',
+              providerMessageId: emailRes.providerMessageId || null,
+              lastErrorCode: emailRes.error ? String(emailRes.error) : null,
+              lastErrorMessage: emailRes.error ? String(emailRes.error) : null,
+              sentAt: emailRes.success ? FieldValue.serverTimestamp() : null,
+              updatedAt: FieldValue.serverTimestamp()
+            });
+            results.push(emailRes);
+          }
+        }
+      }
+
+      if (results.length === 0) {
+        return res.status(400).json({ error: 'Nenhuma regra de e-mail ativada para este pedido.' });
+      }
+
+      const allSuccess = results.every(r => r.success);
+      if (allSuccess) {
+        res.json({ success: true, results });
+      } else {
+        const getSafeError = (err: any) => (err && typeof err === 'object' && err.message) ? err.message : String(err);
+        const errors = results.filter(r => !r.success).map(r => getSafeError(r.error));
+        res.status(500).json({ error: 'Falha parcial ou total no envio.', details: errors });
+      }
+
     } catch (err) {
       console.error('[Trigger Email] Erro:', err);
-      res.status(500).json({ error: 'Erro ao disparar email' });
+      const safeError = (err && typeof err === 'object' && (err as any).message) ? (err as any).message : String(err);
+      res.status(500).json({ error: 'Erro ao disparar email', details: safeError });
     }
   });
 
-  
+  // Fluxo A - ENVIAR E-MAIL DE TESTE
   app.post('/api/stores/:storeId/test-email-template', async (req, res) => {
     try {
       const authHeader = req.headers.authorization;
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return res.status(401).json({ error: 'Não autorizado' });
       }
-      
+
       const token = authHeader.split('Bearer ')[1];
       const { getFirebaseAdmin, getAdminDb } = await import('./server-firebase-admin.js');
       const admin = getFirebaseAdmin();
       const { getAuth } = await import('firebase-admin/auth');
       const decodedToken = await getAuth(admin).verifyIdToken(token);
-      
+
       const { storeId } = req.params;
       const db = getAdminDb();
       const userDoc = await db.collection('users').doc(decodedToken.uid).get();
       const userData = userDoc.data();
-      
+
       const userStores = userData?.stores || [];
       if (!userStores.includes(storeId)) {
          return res.status(403).json({ error: 'Acesso negado à loja.' });
       }
-      
+
+      // Vendedor é o destino fixo do teste
       const sellerEmail = userData?.email;
-      if (!sellerEmail) {
+      if (!sellerEmail || typeof sellerEmail !== 'string' || !sellerEmail.includes('@')) {
         return res.status(400).json({ error: 'E-mail do vendedor não encontrado.' });
       }
 
@@ -233,16 +370,33 @@ async function startServer() {
       const replaceVars = (text) => {
         if (!text) return '';
         return text
-          .replace(/{{customer_name}}/g, escapeHtml("João Teste"))
-          .replace(/{{order_id}}/g, escapeHtml("TEST-1234"))
-          .replace(/{{product_name}}/g, escapeHtml("Produto de Teste"))
-          .replace(/{{store_name}}/g, escapeHtml("Minha Loja"))
-          .replace(/{{total_amount}}/g, escapeHtml("R$ 99,90"));
+          .replace(/\{\{customer_name\}\}/g, escapeHtml("João Teste"))
+          .replace(/\{\{order_id\}\}/g, escapeHtml("TEST-1234"))
+          .replace(/\{\{product_name\}\}/g, escapeHtml("Produto de Teste"))
+          .replace(/\{\{store_name\}\}/g, escapeHtml("Minha Loja"))
+          .replace(/\{\{total_amount\}\}/g, escapeHtml("R$ 99,90"));
       };
 
       const subject = replaceVars(rawSubject);
       const body = replaceVars(rawBody);
       const htmlBody = `<div style="font-family: sans-serif; white-space: pre-wrap; color: #333; line-height: 1.5;">${body}</div>`;
+
+      const { FieldValue } = await import('firebase-admin/firestore');
+      const deliveryId = db.collection('email_deliveries').doc().id;
+      const deliveryRef = db.collection('email_deliveries').doc(deliveryId);
+      
+      await deliveryRef.set({
+        id: deliveryId,
+        type: 'test',
+        storeId,
+        triggeredBy: decodedToken.uid,
+        to: sellerEmail,
+        subject,
+        html: htmlBody,
+        text: body,
+        status: 'queued',
+        createdAt: FieldValue.serverTimestamp()
+      });
 
       const { sendEmail } = await import('./server-email.js');
       const result = await sendEmail({
@@ -252,14 +406,26 @@ async function startServer() {
         text: body
       });
 
+      await deliveryRef.update({
+        status: result.success ? 'sent' : 'failed',
+        provider: 'resend',
+        providerMessageId: result.providerMessageId || null,
+        lastErrorCode: result.error ? String(result.error) : null,
+        lastErrorMessage: result.error ? String(result.error) : null,
+        sentAt: result.success ? FieldValue.serverTimestamp() : null,
+        updatedAt: FieldValue.serverTimestamp()
+      });
+
       if (result.success) {
         res.json({ success: true, provider: 'resend', messageId: result.providerMessageId });
       } else {
-        res.status(500).json({ error: result.error });
+        const errObj = result.error as any; const safeError = errObj ? (typeof errObj === 'object' && errObj.message ? errObj.message : String(errObj)) : 'Unknown Error';
+        res.status(500).json({ error: safeError });
       }
     } catch (err) {
-      console.error('[Test Email Template] Error:', err.message);
-      res.status(500).json({ error: 'Internal server error', details: err.message, stack: err.stack });
+      console.error('[Test Email Template] Error:', err);
+      const safeError = (err && typeof err === 'object' && (err as any).message) ? (err as any).message : String(err);
+      res.status(500).json({ error: 'Internal server error', details: safeError });
     }
   });
 
